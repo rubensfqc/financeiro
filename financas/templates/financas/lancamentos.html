@@ -22,7 +22,7 @@
   <label>Plano de contas <select name="conta"><option value="">Todas</option>{% for c in contas %}<option value="{{ c.pk }}" {% if c.pk|stringformat:"s" == f.conta %}selected{% endif %}>{{ c }}</option>{% endfor %}</select></label>
   <label>Descrição <input name="q" value="{{ f.q|default:'' }}" placeholder="buscar…"></label>
   <button class="btn prim">Filtrar</button>
-  <a class="btn" href="?ano={{ ano }}">Limpar</a>
+  <a class="btn" href="?limpar=1&ano={{ ano }}">Limpar</a>
 </form>
 
 <div class="numeros">

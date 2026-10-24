@@ -32,7 +32,24 @@ def _ano_padrao():
 
 # ---------------------------------------------------------------- lançamentos
 
+FILTROS_LANCAMENTOS = ("ano", "mes", "secao", "classificacao", "banco", "conta", "q", "page")
+SESSAO_FILTROS = "filtros_lancamentos"
+
+
 def lancamentos(request):
+    # Os filtros ficam guardados na sessão de cada usuário: ao sair e voltar para
+    # Lançamentos (sem filtros na URL), a tela reabre com os últimos usados.
+    if "limpar" in request.GET:
+        request.session.pop(SESSAO_FILTROS, None)
+        return redirect(reverse("lancamentos") + f"?ano={request.GET.get('ano') or _ano_padrao()}")
+    if not request.GET and request.session.get(SESSAO_FILTROS):
+        return redirect(reverse("lancamentos") + "?" + request.session[SESSAO_FILTROS])
+    if request.GET:
+        guardar = request.GET.copy()
+        for k in list(guardar):
+            if k not in FILTROS_LANCAMENTOS or not guardar.get(k):
+                del guardar[k]
+        request.session[SESSAO_FILTROS] = guardar.urlencode()
     g = request.GET
     ano = int(g.get("ano") or _ano_padrao())
     qs = Lancamento.objects.filter(ano=ano).select_related("conta", "regra", "banco")
@@ -78,7 +95,7 @@ def lancamento_form(request, pk=None):
         messages.success(request, f"Lançamento salvo ({txt}).")
         if "salvar_e_novo" in request.POST:
             return redirect(f"{reverse('lancamento_novo')}?ano={obj.ano}&mes={obj.mes}&secao={obj.secao}")
-        return redirect(f"{reverse('lancamentos')}?ano={obj.ano}&mes={obj.mes}")
+        return redirect("lancamentos")  # volta com os filtros que estavam em uso
     if not pk and request.method == "GET":
         for campo in ("ano", "mes", "secao"):
             if request.GET.get(campo):
@@ -92,10 +109,9 @@ def lancamento_form(request, pk=None):
 @require_POST
 def lancamento_excluir(request, pk):
     lanc = get_object_or_404(Lancamento, pk=pk)
-    ano, mes = lanc.ano, lanc.mes
     lanc.delete()
     messages.success(request, "Lançamento excluído (continua no histórico).")
-    return redirect(f"{reverse('lancamentos')}?ano={ano}&mes={mes}")
+    return redirect("lancamentos")
 
 
 @require_POST

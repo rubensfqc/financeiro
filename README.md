@@ -5,7 +5,7 @@ Webapp Django que faz o mesmo que a planilha *Gestão Financeira*: cada lançame
 ## O que tem
 
 - **Login obrigatório** em todas as telas, troca de senha, sessão de 8 h. Usuários são criados no admin (`/admin/`, menu *Usuários* para quem é staff).
-- **Lançamentos**: filtro por ano, mês, seção, conta, classificação e texto. A conta pode ser trocada direto na tabela; a escolha manual fica travada e as regras não mexem mais nela (dá para voltar para automática). Linhas sem regra ficam em amarelo, com atalho “+ regra”.
+- **Lançamentos**: os filtros ficam guardados (por usuário) ao trocar de aba e voltar; “Limpar” zera. Filtro por ano, mês, seção, conta, classificação e texto. A conta pode ser trocada direto na tabela; a escolha manual fica travada e as regras não mexem mais nela (dá para voltar para automática). Linhas sem regra ficam em amarelo, com atalho “+ regra”.
 - **Regras**: mesma lógica da aba Regras da planilha (veja abaixo), com um testador (“qual regra pega esta descrição?”), contagem de uso e lista das descrições sem regra mais frequentes. Salvar, editar ou excluir uma regra reclassifica na hora todos os lançamentos automáticos.
 - **Bancos**: cadastro de bancos/caixas (nome, coluna da planilha, instituição, agência, número da conta, titular), com totais do ano e histórico. Cada lançamento mostra o banco.
 - **Contas**: plano de contas com código, marcação “fora do DRE” (transferências entre contas) e ativa/inativa.
@@ -72,7 +72,7 @@ O que é lido:
 - **Correções manuais**: quando a conta da coluna C é diferente do que as regras dariam (alguém digitou por cima), o lançamento entra como **Manual**.
 - **Reimportar**: importar de novo o mesmo ano substitui os lançamentos desse ano e as regras. O que foi apagado continua no histórico.
 
-Outros comandos: `python manage.py reclassificar`, `python manage.py carregar_plano_contas` e `python manage.py test financas` (31 testes).
+Outros comandos: `python manage.py reclassificar`, `python manage.py carregar_plano_contas` e `python manage.py test financas` (35 testes).
 
 ## Publicar no PythonAnywhere
 

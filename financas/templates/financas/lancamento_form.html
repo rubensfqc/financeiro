@@ -17,7 +17,7 @@
     <div class="acoes">
       <button class="btn prim">Salvar</button>
       {% if not lanc %}<button class="btn" name="salvar_e_novo" value="1">Salvar e adicionar outro</button>{% endif %}
-      <a class="btn" href="{% url 'lancamentos' %}{% if lanc %}?ano={{ lanc.ano }}&mes={{ lanc.mes }}{% endif %}">Cancelar</a>
+      <a class="btn" href="{% url 'lancamentos' %}">Cancelar</a>
     </div>
   </form>
   <div>

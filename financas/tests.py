@@ -506,3 +506,40 @@ class BancosTests(TestCase):
         self.assertEqual(self.client.get(reverse("historico") + "?modelo=banco").status_code, 200)
         wbx = openpyxl.load_workbook(planilha.exportar(2026))
         self.assertEqual(wbx.active["E1"].value, "Banco")
+
+
+class FiltrosGuardadosTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user("f", password="senha-forte-123")
+        self.client.force_login(self.user)
+        self.url = reverse("lancamentos")
+
+    def test_filtros_mantidos_ao_voltar(self):
+        self.client.get(self.url + "?ano=2026&mes=8&banco=nenhum&q=pix&page=")
+        self.client.get(reverse("dashboard"))                      # vai para outra aba
+        resp = self.client.get(self.url)                            # volta para Lançamentos
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp["Location"], self.url + "?ano=2026&mes=8&banco=nenhum&q=pix")
+        resp = self.client.get(resp["Location"])
+        self.assertContains(resp, 'value="pix"')
+
+    def test_limpar(self):
+        self.client.get(self.url + "?ano=2026&mes=8")
+        resp = self.client.get(self.url + "?limpar=1&ano=2026")
+        self.assertEqual(resp["Location"], self.url + "?ano=2026")
+        self.client.get(resp["Location"])
+        self.assertEqual(self.client.get(self.url)["Location"], self.url + "?ano=2026")
+
+    def test_salvar_lancamento_volta_aos_filtros(self):
+        self.client.get(self.url + "?ano=2026&mes=3")
+        resp = self.client.post(reverse("lancamento_novo"), {
+            "ano": 2026, "mes": 5, "secao": "D", "descricao": "x", "valor": "1", "banco": "", "conta": ""})
+        self.assertEqual(resp["Location"], self.url)
+        self.assertEqual(self.client.get(self.url)["Location"], self.url + "?ano=2026&mes=3")
+
+    def test_cada_usuario_tem_os_seus(self):
+        self.client.get(self.url + "?ano=2026&mes=8")
+        outro = get_user_model().objects.create_user("g", password="senha-forte-123")
+        c2 = self.client_class()
+        c2.force_login(outro)
+        self.assertEqual(c2.get(self.url).status_code, 200)
