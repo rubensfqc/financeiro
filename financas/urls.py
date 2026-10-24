@@ -17,6 +17,7 @@ urlpatterns = [
     path("contas/", views.contas, name="contas"),
     path("contas/nova/", views.conta_form, name="conta_nova"),
     path("contas/<int:pk>/", views.conta_form, name="conta_editar"),
+    path("contas/unificar/", views.unificar_contas, name="unificar_contas"),
     path("resumo/", views.resumo, name="resumo"),
     path("dashboard/", views.dashboard, name="dashboard"),
     path("historico/", views.historico, name="historico"),

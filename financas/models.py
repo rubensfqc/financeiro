@@ -27,7 +27,8 @@ class Conta(models.Model):
 
     class Meta:
         ordering = ["codigo", "nome"]
-        verbose_name = "conta"
+        verbose_name = "conta do plano de contas"
+        verbose_name_plural = "plano de contas"
 
     def __str__(self):
         return self.nome
@@ -52,7 +53,7 @@ class Regra(models.Model):
     palavra = models.CharField("palavra-chave", max_length=80)
     tipo = models.CharField("tipo de busca", max_length=1, choices=Tipo.choices, default=Tipo.CONTEM)
     secao = models.CharField("seção", max_length=1, choices=SecaoRegra.choices, default=SecaoRegra.AMBAS)
-    conta = models.ForeignKey(Conta, on_delete=models.PROTECT, related_name="regras")
+    conta = models.ForeignKey(Conta, on_delete=models.PROTECT, related_name="regras", verbose_name="plano de contas")
     ordem = models.PositiveIntegerField(
         default=0, db_index=True,
         help_text="Maior número = maior prioridade (exceções ficam com número alto).",
@@ -81,7 +82,8 @@ class Lancamento(models.Model):
     secao = models.CharField("seção", max_length=1, choices=Secao.choices, default=Secao.DESPESA)
     descricao = models.CharField("descrição", max_length=255)
     valor = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
-    conta = models.ForeignKey(Conta, on_delete=models.PROTECT, null=True, blank=True, related_name="lancamentos")
+    conta = models.ForeignKey(Conta, on_delete=models.PROTECT, null=True, blank=True, related_name="lancamentos",
+                              verbose_name="plano de contas")
     classificacao = models.CharField(
         "classificação", max_length=1, choices=Classificacao.choices, default=Classificacao.NENHUMA,
     )

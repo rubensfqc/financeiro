@@ -18,7 +18,7 @@
       <a href="{% url 'lancamentos' %}" class="{% if u == 'lancamentos' or 'lancamento' in u %}ativo{% endif %}">Lançamentos</a>
       <a href="{% url 'resumo' %}" class="{% if u == 'resumo' %}ativo{% endif %}">Resumo</a>
       <a href="{% url 'regras' %}" class="{% if 'regra' in u %}ativo{% endif %}">Regras</a>
-      <a href="{% url 'contas' %}" class="{% if 'conta' in u %}ativo{% endif %}">Contas</a>
+      <a href="{% url 'contas' %}" class="{% if 'conta' in u %}ativo{% endif %}">Plano de contas</a>
       <a href="{% url 'historico' %}" class="{% if u == 'historico' %}ativo{% endif %}">Histórico</a>
       <a href="{% url 'importar' %}" class="{% if u == 'importar' %}ativo{% endif %}">Importar</a>
       {% if user.is_staff %}<a href="{% url 'admin:index' %}">Usuários</a>{% endif %}

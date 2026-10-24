@@ -6,6 +6,7 @@ from .models import MESES, Conta, Lancamento, Regra
 
 class LancamentoForm(forms.ModelForm):
     conta = forms.ModelChoiceField(
+        label="Plano de contas",
         queryset=Conta.objects.filter(ativa=True), required=False,
         empty_label="— automática (pelas regras) —",
         help_text="Deixe em automática para a conta vir das regras. Escolher uma conta trava a classificação.",
@@ -55,31 +56,61 @@ class RegraForm(forms.ModelForm):
 
 
 class ContaForm(forms.ModelForm):
+    mesclar_em = forms.ModelChoiceField(
+        label="Mesclar com outra conta", queryset=Conta.objects.none(), required=False,
+        empty_label="— não mesclar —",
+        help_text="Move todos os lançamentos e regras desta conta para a escolhida e apaga esta. "
+                  "Use quando a planilha trouxe o mesmo item com outro nome.",
+    )
+
     class Meta:
         model = Conta
         fields = ["codigo", "nome", "nao_entra_no_dre", "ativa"]
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance.pk:
+            self.fields["mesclar_em"].queryset = Conta.objects.exclude(pk=self.instance.pk).exclude(codigo="")
+        else:
+            del self.fields["mesclar_em"]
+
+    def clean_codigo(self):
+        codigo = self.cleaned_data["codigo"].strip()
+        if codigo and Conta.objects.filter(codigo=codigo).exclude(pk=self.instance.pk).exists():
+            raise forms.ValidationError("Já existe outra conta com este código. Para juntar as duas, use “Mesclar”.")
+        return codigo
+
 
 class ImportarForm(forms.Form):
+    MODOS = [
+        ("completa", "Importação completa: regras, plano de contas, lançamentos e valores "
+                     "(substitui os lançamentos do ano)"),
+        ("valores", "Só atualizar os valores dos lançamentos já importados "
+                    "(mantém contas e correções feitas no app)"),
+    ]
     arquivo = forms.FileField(label="Planilha (.xlsx)")
     senha = forms.CharField(label="Senha da planilha", required=False, widget=forms.PasswordInput(render_value=False))
     ano = forms.IntegerField(min_value=2000, max_value=2100)
+    modo = forms.ChoiceField(label="O que fazer", choices=MODOS, initial="completa", widget=forms.RadioSelect,
+                             required=False)
     importar_regras = forms.BooleanField(
-        label="Importar regras e contas (substitui as regras atuais)", required=False, initial=True)
-    importar_lancamentos = forms.BooleanField(
-        label="Importar lançamentos (substitui os lançamentos deste ano)", required=False, initial=True)
+        label="Na importação completa, importar também as regras (substitui as regras atuais)",
+        required=False, initial=True)
     coluna_valor = forms.CharField(
-        label="Coluna do valor (opcional)", required=False, max_length=3,
-        help_text="Letra da coluna com o valor de cada lançamento nas abas de mês (ex.: D). Em branco = não importar valores.",
+        label="Coluna do valor", max_length=3, initial="D",
+        help_text="Letra da coluna com o valor de cada lançamento nas abas de mês (na planilha atual: D).",
     )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["ano"].initial = timezone.localdate().year
 
+    def clean_modo(self):
+        return self.cleaned_data.get("modo") or "completa"
+
     def clean_coluna_valor(self):
         v = self.cleaned_data["coluna_valor"].strip().upper()
-        if v and not v.isalpha():
+        if not v.isalpha():
             raise forms.ValidationError("Use só a letra da coluna, ex.: D.")
         return v
 

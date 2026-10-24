@@ -18,7 +18,7 @@
   <label>Mês <select name="mes">{% for v, n in meses %}<option value="{{ v }}" {% if v == f.mes %}selected{% endif %}>{{ n }}</option>{% endfor %}</select></label>
   <label>Seção <select name="secao"><option value="">Todas</option>{% for v, n in secoes %}<option value="{{ v }}" {% if v == f.secao %}selected{% endif %}>{{ n }}</option>{% endfor %}</select></label>
   <label>Classificação <select name="classificacao"><option value="">Todas</option>{% for v, n in classificacoes %}<option value="{{ v }}" {% if v == f.classificacao %}selected{% endif %}>{{ n }}</option>{% endfor %}</select></label>
-  <label>Conta <select name="conta"><option value="">Todas</option>{% for c in contas %}<option value="{{ c.pk }}" {% if c.pk|stringformat:"s" == f.conta %}selected{% endif %}>{{ c }}</option>{% endfor %}</select></label>
+  <label>Plano de contas <select name="conta"><option value="">Todas</option>{% for c in contas %}<option value="{{ c.pk }}" {% if c.pk|stringformat:"s" == f.conta %}selected{% endif %}>{{ c }}</option>{% endfor %}</select></label>
   <label>Descrição <input name="q" value="{{ f.q|default:'' }}" placeholder="buscar…"></label>
   <button class="btn prim">Filtrar</button>
   <a class="btn" href="?ano={{ ano }}">Limpar</a>

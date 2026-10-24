@@ -55,19 +55,21 @@ Pela tela **Importar** (envia o arquivo, a senha e o ano) ou pela linha de coman
 
 ```bash
 python manage.py importar_planilha Gestao_Financeira_2026.xlsx --ano 2026 --usuario admin
-# pede a senha se a planilha tiver; --coluna-valor D para importar também os valores
+# pede a senha se a planilha tiver; valor da coluna D (troque com --coluna-valor)
+# --apenas-valores: só preenche os valores dos lançamentos já importados
 ```
 
 O que é lido:
 
 - **Aba Regras**: regras a partir da linha 5 (A palavra, B tipo, C seção, D conta, E observação) e contas válidas na coluna H.
-- **Aba 2024R** (opcional): código da conta (coluna A) para cada nome (coluna B).
 - **Abas Jan…Dez**: descrição na coluna B e conta na coluna C, a partir da linha 4. Receitas ficam acima da linha “DESPESAS” e despesas abaixo dela.
-- **Valores**: informe a letra da coluna em *Coluna do valor*. Em branco, os valores não são importados e o Resumo mostra quantidades.
+- **Valores**: coluna D por padrão (dá para trocar a letra na tela). Aceita número, texto como “R$ 1.500,00” e fórmulas simples como `=600+150`, mesmo quando o arquivo não guardou o resultado calculado.
+- **Plano de contas = coluna C**: o nome da coluna C é casado com o plano de contas da empresa ignorando seta (`->`), código na frente, espaços, maiúsculas e acentos. “->Compras de Aço”, “compras de aco” e “3.1 -> Compras de Aço” viram a mesma conta 3.1. Nomes que não existem no plano entram sem código, ficam fora do dashboard e aparecem num aviso em **Plano de contas**, onde dá para mesclá-los com a conta certa.
+- **Só atualizar valores**: a opção “Só atualizar os valores” preenche os valores dos lançamentos já importados (pelo mês, linha e descrição) sem mexer em contas, regras ou correções feitas no app.
 - **Correções manuais**: quando a conta da coluna C é diferente do que as regras dariam (alguém digitou por cima), o lançamento entra como **Manual**.
 - **Reimportar**: importar de novo o mesmo ano substitui os lançamentos desse ano e as regras. O que foi apagado continua no histórico.
 
-Outros comandos: `python manage.py reclassificar`, `python manage.py carregar_plano_contas` e `python manage.py test financas` (20 testes).
+Outros comandos: `python manage.py reclassificar`, `python manage.py carregar_plano_contas` e `python manage.py test financas` (26 testes).
 
 ## Publicar no PythonAnywhere
 
@@ -108,6 +110,7 @@ financas/
   models.py             Conta, Regra, Lancamento (+ histórico via django-simple-history)
   classificador.py      lógica das regras e reclassificação
   plano_contas.py       plano de contas (grupos 1–7) e agrupamentos dos indicadores
+  contas.py             casa os nomes da coluna "Plano de Contas" com o plano; unifica/mescla contas
   dashboard.py          cálculos do dashboard
   planilha.py           importação/exportação .xlsx
   views.py, urls.py, forms.py, admin.py

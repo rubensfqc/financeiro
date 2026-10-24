@@ -2,11 +2,22 @@
 {% block titulo %}Plano de contas{% endblock %}
 {% block conteudo %}
 <div class="cabecalho">
-  <h1>Plano de contas</h1>
-  <a class="btn prim" href="{% url 'conta_nova' %}">+ Nova conta</a>
+  <div><h1>Plano de contas</h1>
+    <span class="muted">É a mesma lista da coluna “Plano de Contas” da planilha. Só contas com código entram no dashboard.</span></div>
+  <div class="acoes">
+    <form method="post" action="{% url 'unificar_contas' %}">{% csrf_token %}<button class="btn" title="Junta contas que só diferem na grafia (seta, espaços, acentos) com a conta do plano">Unificar duplicadas</button></form>
+    <a class="btn prim" href="{% url 'conta_nova' %}">+ Nova conta</a>
+  </div>
 </div>
+{% if sem_codigo %}
+<div class="cartao aviso">
+  <b>{{ sem_codigo|length }} conta(s) sem código</b> — vieram da planilha com um nome que não existe no plano de contas e por isso ficam fora do dashboard.
+  Abra cada uma e escolha em <b>Mesclar com outra conta</b> a conta do plano correspondente (ou dê um código a ela):
+  {% for c in sem_codigo %}<a href="{% url 'conta_editar' c.pk %}">{{ c.nome }}</a> ({{ c.n_lanc }} lanç.){% if not forloop.last %}, {% endif %}{% endfor %}
+</div>
+{% endif %}
 <div class="tabela-wrap"><table>
-  <thead><tr><th>Código</th><th>Conta</th><th class="num">Regras</th><th class="num">Lançamentos</th><th></th></tr></thead>
+  <thead><tr><th>Código</th><th>Plano de contas</th><th class="num">Regras</th><th class="num">Lançamentos</th><th></th></tr></thead>
   <tbody>{% for c in contas %}
   <tr {% if not c.ativa %}class="muted"{% endif %}>
     <td>{{ c.codigo }}</td>

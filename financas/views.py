@@ -190,20 +190,45 @@ def regra_excluir(request, pk):
 
 # ---------------------------------------------------------------- contas
 
+def _ordem_codigo(conta):
+    partes = [int(p) if p.isdigit() else 0 for p in (conta.codigo or "").split(".")]
+    return (not conta.codigo, partes, conta.nome)
+
+
 def contas(request):
-    lista = Conta.objects.annotate(n_regras=Count("regras", distinct=True),
-                                   n_lanc=Count("lancamentos", distinct=True))
-    return render(request, "financas/contas.html", {"contas": lista})
+    lista = sorted(Conta.objects.annotate(n_regras=Count("regras", distinct=True),
+                                          n_lanc=Count("lancamentos", distinct=True)), key=_ordem_codigo)
+    sem_codigo = [c for c in lista if not c.codigo and not c.nao_entra_no_dre]
+    return render(request, "financas/contas.html", {"contas": lista, "sem_codigo": sem_codigo})
 
 
 def conta_form(request, pk=None):
+    from .contas import mesclar
+
     conta = get_object_or_404(Conta, pk=pk) if pk else None
     form = ContaForm(request.POST or None, instance=conta)
     if request.method == "POST" and form.is_valid():
-        form.save()
-        messages.success(request, "Conta salva.")
+        destino = form.cleaned_data.get("mesclar_em")
+        if destino:
+            n_l, n_r = mesclar(conta, destino, Lancamento, Regra, usuario=request.user)
+            messages.success(request, f'"{conta.nome}" mesclada em "{destino.nome}": '
+                                      f"{n_l} lançamento(s) e {n_r} regra(s) movidos.")
+        else:
+            form.save()
+            messages.success(request, "Conta salva.")
         return redirect("contas")
     return render(request, "financas/conta_form.html", {"form": form, "conta": conta})
+
+
+@require_POST
+def unificar_contas(request):
+    from .contas import unificar
+    from .plano_contas import carregar
+
+    carregar(Conta)
+    n = unificar(Conta, Lancamento, Regra, usuario=request.user)
+    messages.success(request, f"{n} conta(s) duplicada(s) unificada(s) com o plano de contas.")
+    return redirect("contas")
 
 
 # ---------------------------------------------------------------- resumo
@@ -335,18 +360,21 @@ def importar(request):
     resultado = None
     if request.method == "POST" and form.is_valid():
         d = form.cleaned_data
-        if not (d["importar_regras"] or d["importar_lancamentos"]):
-            form.add_error(None, "Marque pelo menos uma opção para importar.")
-        else:
-            try:
-                wb = planilha.abrir_planilha(d["arquivo"], d["senha"])
+        try:
+            wb = planilha.abrir_planilha(d["arquivo"], d["senha"])
+            if d["modo"] == "valores":
+                resultado = planilha.atualizar_valores(wb, d["ano"], usuario=request.user,
+                                                       coluna_valor=d["coluna_valor"])
+            else:
                 resultado = planilha.importar(
                     wb, d["ano"], usuario=request.user, importar_regras=d["importar_regras"],
-                    importar_lancamentos=d["importar_lancamentos"], coluna_valor=d["coluna_valor"],
+                    importar_lancamentos=True, coluna_valor=d["coluna_valor"],
                 )
-                messages.success(request, "Importação concluída.")
-            except planilha.ErroImportacao as exc:
-                form.add_error(None, str(exc))
+            resultado["modo"] = d["modo"]
+            resultado["ano"] = d["ano"]
+            messages.success(request, "Importação concluída.")
+        except planilha.ErroImportacao as exc:
+            form.add_error(None, str(exc))
     return render(request, "financas/importar.html", {"form": form, "resultado": resultado})
 
 

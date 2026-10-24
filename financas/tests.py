@@ -298,3 +298,118 @@ class DashboardTests(TestCase):
         self.assertTrue(Lancamento.objects.filter(ano=2024, descricao__startswith="[DEMO]").count() > 1000)
         call_command("dados_demo", "--apagar", stdout=io.StringIO())
         self.assertFalse(Lancamento.objects.filter(descricao__startswith="[DEMO]").exists())
+
+
+def planilha_real(valores_formula=True):
+    """Planilha no formato real: Plano de Contas (C) escrito de vários jeitos e valor na coluna D."""
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    r = wb.create_sheet("Regras")
+    for _ in range(3):
+        r.append([])
+    r.append(["Palavra-chave", "Tipo de busca", "Seção", "Plano de Contas", "Observação", None, None, "Contas válidas"])
+    r.append(["GERDAU", "Contém", "Despesa", "->Compras de Aço", "", None, None, "->Compras de Aço"])
+    r.append(["ENEL", "Contém", "Despesa", "Energia Eletrica", "", None, None, "Energia Eletrica"])
+    r.append(["PIX", "Contém", "Receita", "-> REC PIX", ""])
+    r.append(["LM BRADESCO", "Contém", "Ambas", "-> Transferência entre contas", ""])
+    jul = wb.create_sheet("Jul")
+    jul.append(["Julho"]); jul.append([]); jul.append([None, "Descrição", "Plano de Contas", "Valor"])
+    jul.append([None, "PIX CLIENTE A", "-> REC PIX", 1000])
+    jul.append([None, "NF 123 OBRA X", "3.3 -> Rec Vendas Faturada", "R$ 2.500,00"])  # nome com código
+    jul.append([None, "DESPESAS"])
+    jul.append([None, "GERDAU VERGALHAO", "->Compras de Aço", "=600+150" if valores_formula else 750])
+    jul.append([None, "ENEL JULHO", "Energia Eletrica", -300])
+    jul.append([None, "LM BRADESCO", "-> Transferência entre contas", 5000])
+    jul.append([None, "SALARIO JOAO", "  -> salários e vales ", 1200])
+    jul.append([None, "COMPRA DE PEDRA", "-> Compras de Pedra", 400])  # não existe no plano
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
+
+
+class PlanoDeContasDaPlanilhaTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user("rubens", password="senha-forte-123")
+
+    def test_mesmo_campo_e_valores(self):
+        from .dashboard import montar
+        wb = planilha.abrir_planilha(planilha_real(), "")
+        r = planilha.importar(wb, 2026, usuario=self.user)  # coluna D por padrão
+        self.assertEqual(r["com_valor"], 7)
+        get = lambda d: Lancamento.objects.get(descricao=d)
+        self.assertEqual(get("GERDAU VERGALHAO").conta.codigo, "3.1")
+        self.assertEqual(get("GERDAU VERGALHAO").valor, 750)          # fórmula sem valor salvo
+        self.assertEqual(get("NF 123 OBRA X").valor, 2500)            # texto "R$ 2.500,00"
+        self.assertEqual(get("ENEL JULHO").conta.codigo, "5.11")      # sem acento na planilha
+        self.assertEqual(get("SALARIO JOAO").conta.codigo, "5.1")     # espaços e minúsculas
+        self.assertEqual(get("PIX CLIENTE A").conta.codigo, "1.5")
+        self.assertTrue(get("LM BRADESCO").conta.nao_entra_no_dre)
+        # nenhuma conta duplicada para itens do plano; só a que não existe fica sem código
+        self.assertEqual(r["contas_sem_codigo"], ["-> Compras de Pedra"])
+        self.assertEqual(Conta.objects.filter(nome__icontains="aço").count(), 1)
+        # "3.3 -> Rec Vendas Faturada": o nome manda, não o código errado
+        self.assertEqual(get("NF 123 OBRA X").conta.codigo, "1.3")
+
+        d = montar(2026, 3)
+        self.assertEqual(d["atual"]["receita"], 3500)
+        self.assertEqual(d["atual"]["cv"], 750)
+        self.assertEqual(d["atual"]["cf"], 1500)                      # energia 300 + salário 1200
+        self.assertEqual(d["qualidade"]["contas_sem_codigo"], ["-> Compras de Pedra"])
+
+    def test_unifica_duplicadas_de_importacao_antiga(self):
+        antiga = Conta.objects.create(nome="->Compras de Aço")        # como a versão anterior criava
+        l = Lancamento.objects.create(ano=2026, mes=7, secao="D", descricao="AÇO", valor=10, conta=antiga,
+                                      classificacao="M")
+        from .contas import unificar
+        self.assertEqual(unificar(Conta, Lancamento, Regra, usuario=self.user), 1)
+        l.refresh_from_db()
+        self.assertEqual(l.conta.codigo, "3.1")
+        self.assertFalse(Conta.objects.filter(pk=antiga.pk).exists())
+        self.assertIn("Contas unificadas", l.history.first().history_change_reason)
+
+    def test_mesclar_pela_tela(self):
+        pedra = Conta.objects.create(nome="-> Compras de Pedra")
+        Lancamento.objects.create(ano=2026, mes=7, secao="D", descricao="PEDRA", valor=10, conta=pedra,
+                                  classificacao="M")
+        diversas = Conta.objects.get(codigo="3.7")
+        self.client.force_login(self.user)
+        self.assertContains(self.client.get(reverse("contas")), "1 conta(s) sem código")
+        resp = self.client.post(reverse("conta_editar", args=[pedra.pk]), {
+            "codigo": "", "nome": pedra.nome, "ativa": "on", "mesclar_em": diversas.pk})
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(Lancamento.objects.get(descricao="PEDRA").conta, diversas)
+        self.assertFalse(Conta.objects.filter(pk=pedra.pk).exists())
+
+    def test_so_atualizar_valores(self):
+        wb = planilha.abrir_planilha(planilha_real(), "")
+        planilha.importar(wb, 2026, usuario=self.user, coluna_valor="E")  # coluna errada: sem valores
+        self.assertFalse(Lancamento.objects.filter(valor__isnull=False).exists())
+        aco = Lancamento.objects.get(descricao="GERDAU VERGALHAO")
+        aco.conta = Conta.objects.get(codigo="3.7")                       # correção feita no app
+        aco.classificacao = "M"
+        aco.save()
+        r = planilha.atualizar_valores(planilha.abrir_planilha(planilha_real(), ""), 2026, usuario=self.user)
+        self.assertEqual(r["valores_atualizados"], 7)
+        self.assertEqual(r["nao_encontrados"], 0)
+        aco.refresh_from_db()
+        self.assertEqual((aco.valor, aco.conta.codigo), (750, "3.7"))   # valor entrou, correção ficou
+        self.assertEqual(aco.history.first().history_user, self.user)
+
+    def test_importar_pela_tela_coluna_d_padrao(self):
+        self.client.force_login(self.user)
+        arq = planilha_real()
+        arq.name = "Gestao.xlsx"
+        resp = self.client.post(reverse("importar"), {"arquivo": arq, "ano": 2026, "modo": "completa",
+                                                      "importar_regras": "on", "coluna_valor": "D"})
+        self.assertContains(resp, "7 com valor")
+        self.assertContains(resp, "Compras de Pedra")
+
+
+class ChaveContaTests(TestCase):
+    def test_chave(self):
+        from .contas import chave
+        iguais = ["-> Compras de Aço", "->Compras de Aço", "  compras de aco ", "3.1 -> Compras de Aço",
+                  "→ Compras de Aço", "-> Compras\xa0de Aço"]
+        self.assertEqual({chave(n) for n in iguais}, {"compras de aco"})
+        self.assertEqual(chave("-> Encargos 13o Salário"), "encargos 13o salario")

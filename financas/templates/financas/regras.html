@@ -16,11 +16,11 @@
 <div>
   <form class="filtros" method="get">
     <label>Buscar <input name="q" value="{{ q }}" placeholder="palavra, conta…"></label>
-    <label>Conta <select name="conta"><option value="">Todas</option>{% for c in contas %}<option value="{{ c.pk }}" {% if c.pk|stringformat:"s" == conta_sel %}selected{% endif %}>{{ c }}</option>{% endfor %}</select></label>
+    <label>Plano de contas <select name="conta"><option value="">Todas</option>{% for c in contas %}<option value="{{ c.pk }}" {% if c.pk|stringformat:"s" == conta_sel %}selected{% endif %}>{{ c }}</option>{% endfor %}</select></label>
     <button class="btn prim">Filtrar</button>
   </form>
   <div class="tabela-wrap"><table>
-    <thead><tr><th class="num">Ordem</th><th>Palavra-chave</th><th>Tipo</th><th>Seção</th><th>Conta</th><th class="num">Usos</th><th></th></tr></thead>
+    <thead><tr><th class="num">Ordem</th><th>Palavra-chave</th><th>Tipo</th><th>Seção</th><th>Plano de contas</th><th class="num">Usos</th><th></th></tr></thead>
     <tbody>{% for r in regras %}
       <tr {% if not r.ativa %}class="muted"{% endif %}>
         <td class="num">{{ r.ordem }}</td>
