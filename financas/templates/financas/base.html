@@ -14,6 +14,7 @@
     <a class="marca" href="{% url 'lancamentos' %}">Gestão Financeira</a>
     {% with u=request.resolver_match.url_name %}
     <nav>
+      <a href="{% url 'dashboard' %}" class="{% if u == 'dashboard' %}ativo{% endif %}">Dashboard</a>
       <a href="{% url 'lancamentos' %}" class="{% if u == 'lancamentos' or 'lancamento' in u %}ativo{% endif %}">Lançamentos</a>
       <a href="{% url 'resumo' %}" class="{% if u == 'resumo' %}ativo{% endif %}">Resumo</a>
       <a href="{% url 'regras' %}" class="{% if 'regra' in u %}ativo{% endif %}">Regras</a>
@@ -25,7 +26,7 @@
     {% endwith %}
     <div class="usuario">
       <span>{{ user.get_full_name|default:user.username }}</span>
-      <a href="{% url 'password_change' %}" style="color:#d6e2ee">Senha</a>
+      <a class="link-senha" href="{% url 'password_change' %}" style="color:#d6e2ee">Senha</a>
       <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button>Sair</button></form>
     </div>
   </div>
@@ -35,5 +36,6 @@
   {% if messages %}<ul class="mensagens">{% for m in messages %}<li class="{{ m.tags }}">{{ m }}</li>{% endfor %}</ul>{% endif %}
   {% block conteudo %}{% endblock %}
 </main>
+{% block scripts %}{% endblock %}
 </body>
 </html>

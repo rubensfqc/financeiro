@@ -8,6 +8,7 @@ Webapp Django que faz o mesmo que a planilha *Gestão Financeira*: cada lançame
 - **Lançamentos**: filtro por ano, mês, seção, conta, classificação e texto. A conta pode ser trocada direto na tabela; a escolha manual fica travada e as regras não mexem mais nela (dá para voltar para automática). Linhas sem regra ficam em amarelo, com atalho “+ regra”.
 - **Regras**: mesma lógica da aba Regras da planilha (veja abaixo), com um testador (“qual regra pega esta descrição?”), contagem de uso e lista das descrições sem regra mais frequentes. Salvar, editar ou excluir uma regra reclassifica na hora todos os lançamentos automáticos.
 - **Contas**: plano de contas com código, marcação “fora do DRE” (transferências entre contas) e ativa/inativa.
+- **Dashboard**: visão consolidada por trimestre (T1–T4) ou ano — veja a seção abaixo.
 - **Resumo**: totais por conta e por mês (ou quantidades, se os valores não forem importados).
 - **Histórico**: toda criação, alteração e exclusão de lançamentos, regras e contas, com usuário, data, motivo e os campos alterados (antes → depois). Filtros por tipo, ação, usuário, período e texto. Cada lançamento e regra também mostra o próprio histórico.
 - **Importar / exportar .xlsx**: importa a planilha atual (inclusive com senha de abertura) e exporta lançamentos + regras.
@@ -19,6 +20,22 @@ Webapp Django que faz o mesmo que a planilha *Gestão Financeira*: cada lançame
 - **Começa com**: a descrição começa com a palavra-chave.
 - **Seção**: Receita, Despesa ou Ambas.
 - Se várias regras servirem, vence a de **maior ordem** (na planilha, a que estava mais abaixo). Exceções recebem número alto.
+
+## Dashboard
+
+Página inicial após o login. Escolha o ano e o trimestre (ou o ano inteiro). Usa o plano de contas da empresa (grupos 1 a 7, já cadastrado pela migração; `python manage.py carregar_plano_contas` acerta os códigos se alguém mudar).
+
+- **Cartões**: receita (grupo 1), custos variáveis (3), margem de contribuição em R$ e %, custos fixos (5), resultado operacional em R$ e %, ponto de equilíbrio. Cada um comparado com o trimestre anterior e com o mesmo trimestre do ano anterior.
+- **DRE do período**: inclui receitas (2) e despesas (7) não operacionais e o saldo final.
+- **Tendência**: receita e custos dos últimos 8 trimestres, margens em %, e o mês a mês do ano com a receita do ano anterior.
+- **Pré-moldados**: compras de aço, cimento e mercadorias diversas por trimestre, e o peso na receita de aço, cimento, mercadorias, logística (combustível + fretes), mão de obra (MO avulsa + pessoal 5.1–5.8) e impostos.
+- **Detalhamento**: 10 maiores despesas com variação, receita por forma de recebimento.
+- **Alertas automáticos**: prejuízo, margem caindo 3 p.p. ou mais, indicador que muda 2 p.p. ou mais, conta que sobe 30% ou mais, receita 15% acima/abaixo do ano anterior.
+- **Qualidade dos dados**: lançamentos sem conta, sem valor, ou em contas sem código.
+
+Os valores são somados em módulo (o grupo da conta define se é receita ou custo). Contas “fora do DRE” (transferências) não entram.
+
+**Ver com dados de exemplo**: `python manage.py dados_demo` cria lançamentos fictícios (marcados “[DEMO]”) para o ano passado e o atual; `python manage.py dados_demo --apagar` remove. Ele se recusa a rodar se já houver lançamentos reais (use `--forcar` para misturar).
 
 ## Rodar localmente
 
@@ -50,7 +67,7 @@ O que é lido:
 - **Correções manuais**: quando a conta da coluna C é diferente do que as regras dariam (alguém digitou por cima), o lançamento entra como **Manual**.
 - **Reimportar**: importar de novo o mesmo ano substitui os lançamentos desse ano e as regras. O que foi apagado continua no histórico.
 
-Outros comandos: `python manage.py reclassificar` e `python manage.py test financas` (15 testes).
+Outros comandos: `python manage.py reclassificar`, `python manage.py carregar_plano_contas` e `python manage.py test financas` (20 testes).
 
 ## Publicar no PythonAnywhere
 
@@ -90,9 +107,11 @@ config/                 settings, urls, wsgi
 financas/
   models.py             Conta, Regra, Lancamento (+ histórico via django-simple-history)
   classificador.py      lógica das regras e reclassificação
+  plano_contas.py       plano de contas (grupos 1–7) e agrupamentos dos indicadores
+  dashboard.py          cálculos do dashboard
   planilha.py           importação/exportação .xlsx
   views.py, urls.py, forms.py, admin.py
   templates/, static/   telas (Django templates + HTMX, CSS próprio)
-  management/commands/  importar_planilha, reclassificar
+  management/commands/  importar_planilha, reclassificar, carregar_plano_contas, dados_demo
   tests.py
 ```

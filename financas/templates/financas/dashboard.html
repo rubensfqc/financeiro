@@ -1,0 +1,238 @@
+{% extends "financas/base.html" %}
+{% load financas_extras %}
+{% block titulo %}Dashboard {{ rotulo }}{% endblock %}
+{% block conteudo %}
+<div class="cabecalho">
+  <div>
+    <h1>Dashboard {{ rotulo }}</h1>
+    <span class="muted">Comparações com {{ rotulo_anterior }}{% if trimestre %} (trimestre anterior) e {{ rotulo_ano_anterior }} (mesmo trimestre do ano anterior){% else %} (ano anterior){% endif %}. Transferências entre contas não entram.</span>
+  </div>
+  <form method="get" class="filtros" style="margin:0; padding:8px">
+    <select name="ano" onchange="this.form.submit()" aria-label="Ano">{% for a in anos %}<option {% if a == ano %}selected{% endif %}>{{ a }}</option>{% endfor %}</select>
+    <div class="segmentos" role="group" aria-label="Período">
+      {% for v, n in opcoes_tri %}<button name="tri" value="{{ v }}" class="{% if v == tri %}ativo{% endif %}">{{ n }}</button>{% endfor %}
+    </div>
+  </form>
+</div>
+
+{% if not tem_valores %}
+<div class="cartao aviso">Os lançamentos de {{ ano }} ainda não têm valores, então os números abaixo ficam zerados. Importe a planilha informando a <b>coluna do valor</b> em <a href="{% url 'importar' %}">Importar</a>.</div>
+{% elif not atual.tem_dados %}
+<div class="cartao aviso">Não há lançamentos em {{ rotulo }}.</div>
+{% endif %}
+
+{% if alertas %}
+<section class="alertas" aria-label="Alertas">
+  {% for a in alertas %}<div class="alerta {{ a.nivel }}"><span aria-hidden="true">{% if a.nivel == 'ruim' %}▲{% else %}✓{% endif %}</span> {{ a.texto }}</div>{% endfor %}
+</section>
+{% endif %}
+
+<section class="cartoes">
+  {% for c in cartoes %}
+  <div class="cartao kpi">
+    <span class="kpi-rotulo">{{ c.rotulo }}</span>
+    <b class="kpi-valor {% if c.chave == 'resultado' or c.chave == 'resultado_pct' %}{% if c.valor < 0 %}negativo{% endif %}{% endif %}">{{ c|valor_cartao }}</b>
+    <div class="kpi-comp">
+      {% if c.vs_anterior %}<span class="var {% if c.vs_anterior.bom %}bom{% elif c.vs_anterior.bom is False %}ruim{% endif %}" title="vs {{ rotulo_anterior }}">{% if c.vs_anterior.delta > 0 %}↑{% elif c.vs_anterior.delta < 0 %}↓{% endif %} {{ c.vs_anterior|delta }} <span class="muted">vs {{ rotulo_anterior }}</span></span>{% endif %}
+      {% if trimestre and c.vs_ano_anterior %}<span class="var {% if c.vs_ano_anterior.bom %}bom{% elif c.vs_ano_anterior.bom is False %}ruim{% endif %}" title="vs {{ rotulo_ano_anterior }}">{% if c.vs_ano_anterior.delta > 0 %}↑{% elif c.vs_ano_anterior.delta < 0 %}↓{% endif %} {{ c.vs_ano_anterior|delta }} <span class="muted">vs {{ rotulo_ano_anterior }}</span></span>{% endif %}
+    </div>
+    {% if c.chave == 'ponto_equilibrio' and atual.cobertura_pe %}<span class="small muted">A receita cobriu {{ atual.cobertura_pe|pct:0 }} do ponto de equilíbrio</span>{% endif %}
+  </div>
+  {% endfor %}
+</section>
+
+<h2>Tendência</h2>
+<section class="grade-2">
+  <figure class="cartao grafico">
+    <figcaption>Receita e custos por trimestre</figcaption>
+    <div class="area"><canvas id="g-tendencia" role="img" aria-label="Receita, custos variáveis, custos fixos e resultado por trimestre"></canvas></div>
+  </figure>
+  <figure class="cartao grafico">
+    <figcaption>Margens por trimestre (% da receita)</figcaption>
+    <div class="area"><canvas id="g-margens" role="img" aria-label="Margem de contribuição e resultado em percentual da receita por trimestre"></canvas></div>
+  </figure>
+</section>
+
+<section class="grade-2">
+  <figure class="cartao grafico">
+    <figcaption>Mês a mês em {{ ano }}{% if graficos.mensal.tem_aa %} (linha tracejada: receita de {{ ano|add:"-1" }}){% endif %}</figcaption>
+    <div class="area"><canvas id="g-mensal" role="img" aria-label="Receita e resultado por mês"></canvas></div>
+  </figure>
+  <div class="cartao">
+    <h3>DRE do período – {{ rotulo }}</h3>
+    <table class="dre">
+      <tbody>
+        <tr><td>Receitas de vendas</td><td class="num">{{ atual.receita|brl }}</td><td class="num muted">100%</td></tr>
+        <tr><td>(−) Custos variáveis</td><td class="num">{{ atual.cv|brl }}</td><td class="num muted">{% if atual.receita %}{{ atual.cv|pct_de:atual.receita }}{% endif %}</td></tr>
+        <tr class="sub"><td>Margem de contribuição</td><td class="num">{{ atual.mc|brl }}</td><td class="num">{{ atual.mc_pct|pct }}</td></tr>
+        <tr><td>(−) Custos fixos</td><td class="num">{{ atual.cf|brl }}</td><td class="num muted">{% if atual.receita %}{{ atual.cf|pct_de:atual.receita }}{% endif %}</td></tr>
+        <tr class="sub"><td>Resultado operacional</td><td class="num {% if atual.resultado < 0 %}negativo{% endif %}">{{ atual.resultado|brl }}</td><td class="num">{{ atual.resultado_pct|pct }}</td></tr>
+        <tr><td>(+) Receitas não operacionais</td><td class="num">{{ atual.rec_nao_oper|brl }}</td><td></td></tr>
+        <tr><td>(−) Despesas não operacionais</td><td class="num">{{ atual.desp_nao_oper|brl }}</td><td></td></tr>
+        <tr class="sub"><td>Saldo final do período</td><td class="num {% if atual.saldo_final < 0 %}negativo{% endif %}">{{ atual.saldo_final|brl }}</td><td></td></tr>
+      </tbody>
+    </table>
+    <p class="small muted" style="margin-bottom:0">Pró-labore dos sócios no período: {{ atual.prolabore|brl }} (já dentro dos custos fixos).</p>
+  </div>
+</section>
+
+<h2>Indicadores de pré-moldados</h2>
+<section class="grade-2">
+  <figure class="cartao grafico">
+    <figcaption>Compras de matéria-prima por trimestre</figcaption>
+    <div class="area"><canvas id="g-materia" role="img" aria-label="Compras de aço, cimento e mercadorias diversas por trimestre"></canvas></div>
+  </figure>
+  <figure class="cartao grafico">
+    <figcaption>Peso de cada custo na receita (%)</figcaption>
+    <div class="area"><canvas id="g-pct" role="img" aria-label="Aço, cimento, mercadorias, logística, mão de obra e impostos em percentual da receita por trimestre"></canvas></div>
+  </figure>
+</section>
+<div class="tabela-wrap" style="margin-top:12px">
+<table>
+  <thead><tr><th>% da receita</th><th class="num">{{ rotulo }}</th><th class="num">{{ rotulo_anterior }}</th>{% if trimestre %}<th class="num">{{ rotulo_ano_anterior }}</th>{% endif %}<th>O que observar</th></tr></thead>
+  <tbody>{% for i in indicadores_pct %}
+    <tr><td>{{ i.nome }}</td><td class="num"><b>{{ i.atual|pct }}</b></td><td class="num">{{ i.anterior|pct }}</td>{% if trimestre %}<td class="num">{{ i.ano_anterior|pct }}</td>{% endif %}
+      <td class="small muted">{% cycle "Insumo mais caro e mais volátil; se sobe, revisar preço de venda." "Acompanha o preço do saco/tonelada; sobe junto com reajustes do fornecedor." "Pedra, areia, EPS/isotermo, tijolos e outros insumos." "Entrega pesa no pré-moldado; subindo, rever frete cobrado e rotas." "Salários, encargos e MO avulsa; mede produtividade da equipe." "Depende do faturamento e do regime tributário." %}</td></tr>
+  {% endfor %}</tbody>
+</table>
+</div>
+
+<h2>Detalhamento – {{ rotulo }}</h2>
+<section class="grade-2">
+  <div class="cartao">
+    <h3>Maiores despesas</h3>
+    <div class="area area-alta"><canvas id="g-top" role="img" aria-label="Dez maiores contas de despesa do período"></canvas></div>
+    <div class="rolagem"><table class="compacta">
+      <thead><tr><th>Conta</th><th class="num">Valor</th><th class="num">% das despesas</th><th class="num">vs {{ rotulo_anterior }}</th></tr></thead>
+      <tbody>{% for t in top %}
+        <tr><td><a href="{% url 'lancamentos' %}?ano={{ ano }}&conta={{ t.conta_id }}">{{ t.nome }}</a></td><td class="num">{{ t.valor|brl }}</td><td class="num">{{ t.pct|pct }}</td>
+          <td class="num {% if t.var >= 0.5 %}ruim{% elif t.var <= -0.5 %}bom{% endif %}">{% if t.var is not None %}{% if t.var >= 0.5 %}↑ +{% elif t.var <= -0.5 %}↓ {% endif %}{{ t.var|pct:0 }}{% else %}—{% endif %}</td></tr>
+      {% empty %}<tr><td colspan="4" class="muted">Sem despesas no período.</td></tr>{% endfor %}</tbody>
+    </table></div>
+  </div>
+  <div>
+    <div class="cartao">
+      <h3>Receita por forma de recebimento</h3>
+      {% if formas %}
+      <div class="area area-baixa"><canvas id="g-formas" role="img" aria-label="Receita por forma de recebimento"></canvas></div>
+      <div class="rolagem"><table class="compacta"><tbody>{% for f in formas %}<tr><td>{{ f.nome }}</td><td class="num">{{ f.valor|brl }}</td><td class="num">{{ f.pct|pct }}</td></tr>{% endfor %}</tbody></table></div>
+      {% else %}<p class="muted">Sem receitas no período.</p>{% endif %}
+    </div>
+    <div class="cartao" style="margin-top:16px">
+      <h3>Qualidade dos dados</h3>
+      <ul class="qualidade">
+        <li>{{ qualidade.n }} lançamentos no período</li>
+        <li>{% if qualidade.sem_conta_n %}<b class="ruim">▲ {{ qualidade.sem_conta_n }} sem conta</b> ({{ qualidade.sem_conta_valor|brl }} fora dos números) — <a href="{% url 'lancamentos' %}?ano={{ ano }}&classificacao=N">classificar</a>{% else %}<span class="bom">✓ Todos os lançamentos têm conta</span>{% endif %}</li>
+        {% if qualidade.pct_classificado_valor is not None %}<li>{{ qualidade.pct_classificado_valor|pct }} do valor movimentado está classificado</li>{% endif %}
+        {% if qualidade.sem_valor %}<li class="ruim">▲ {{ qualidade.sem_valor }} lançamento(s) sem valor</li>{% endif %}
+        {% if qualidade.contas_sem_codigo %}<li class="ruim">▲ Contas sem código (fora do dashboard): {{ qualidade.contas_sem_codigo|join:", " }} — <a href="{% url 'contas' %}">ajustar</a></li>{% endif %}
+      </ul>
+    </div>
+  </div>
+</section>
+
+{{ graficos|json_script:"dados-graficos" }}
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+(function () {
+  if (!window.Chart) return;
+  const D = JSON.parse(document.getElementById("dados-graficos").textContent);
+  const css = getComputedStyle(document.documentElement);
+  const cor = (n) => css.getPropertyValue(n).trim();
+  // Cores em ordem fixa por entidade: a mesma série tem sempre a mesma cor.
+  const S = [cor("--serie-1"), cor("--serie-2"), cor("--serie-3"), cor("--serie-4"), cor("--serie-5"), cor("--serie-6")];
+  const superficie = cor("--surface"), tinta = cor("--muted"), grade = cor("--line");
+
+  const brl = (v) => v == null ? "—" : "R$ " + Math.round(v).toLocaleString("pt-BR");
+  const brlCurto = (v) => {
+    const a = Math.abs(v);
+    if (a >= 1e6) return "R$ " + (v / 1e6).toLocaleString("pt-BR", {maximumFractionDigits: 1}) + " mi";
+    if (a >= 1e3) return "R$ " + Math.round(v / 1e3).toLocaleString("pt-BR") + " mil";
+    return "R$ " + v;
+  };
+  const pct = (v) => v == null ? "—" : v.toLocaleString("pt-BR", {maximumFractionDigits: 1}) + "%";
+
+  Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+  Chart.defaults.font.size = 12;
+  Chart.defaults.color = tinta;
+  Chart.defaults.plugins.legend.labels.usePointStyle = true;
+  Chart.defaults.plugins.legend.labels.boxWidth = 8;
+  Chart.defaults.plugins.legend.labels.boxHeight = 8;
+  Chart.defaults.plugins.legend.labels.pointStyleWidth = 10;
+  Chart.defaults.plugins.tooltip.mode = "index";
+  Chart.defaults.plugins.tooltip.intersect = false;
+  Chart.defaults.maintainAspectRatio = false;
+
+  const eixoBRL = {beginAtZero: true, grid: {color: grade}, border: {display: false}, ticks: {callback: brlCurto, maxRotation: 0, maxTicksLimit: 6}};
+  const eixoPct = {grid: {color: grade}, border: {display: false}, ticks: {callback: (v) => v + "%"}};
+  const eixoX = {grid: {display: false}, border: {color: grade}};
+  const tipBRL = {callbacks: {label: (c) => ` ${c.dataset.label}: ${brl(c.parsed.y ?? c.parsed.x)}`}};
+  const tipPct = {callbacks: {label: (c) => ` ${c.dataset.label}: ${pct(c.parsed.y)}`}};
+  const barra = (label, data, c) => ({label, data, backgroundColor: c, borderColor: superficie, borderWidth: 2,
+                                      borderRadius: 4, borderSkipped: "start", maxBarThickness: 28});
+  const linha = (label, data, c, extra) => Object.assign({type: "line", label, data, borderColor: c, backgroundColor: c,
+                                      borderWidth: 2, pointRadius: 4, pointHoverRadius: 6, tension: 0.25, spanGaps: true}, extra || {});
+
+  const T = D.tendencia;
+  new Chart("g-tendencia", {
+    type: "bar",
+    data: {labels: T.rotulos, datasets: [
+      barra("Receita", T.receita, S[0]), barra("Custos variáveis", T.cv, S[1]), barra("Custos fixos", T.cf, S[2]),
+      linha("Resultado", T.resultado, S[3]),
+    ]},
+    options: {scales: {y: eixoBRL, x: eixoX}, plugins: {tooltip: tipBRL}},
+  });
+
+  new Chart("g-margens", {
+    type: "line",
+    data: {labels: T.rotulos, datasets: [
+      linha("Margem de contribuição", T.mc_pct, S[0]), linha("Resultado operacional", T.resultado_pct, S[1]),
+    ]},
+    options: {scales: {y: eixoPct, x: eixoX}, plugins: {tooltip: tipPct}},
+  });
+
+  const M = D.mensal;
+  const destaque = new Set(M.destaque);
+  const mensais = [
+    Object.assign(barra("Receita", M.receita, M.rotulos.map((_, i) => destaque.has(i + 1) ? S[0] : S[0] + "66")), {}),
+    linha("Resultado", M.resultado, S[3]),
+  ];
+  if (M.tem_aa) mensais.push(linha("Receita ano anterior", M.receita_aa, S[2], {borderDash: [6, 4], pointRadius: 3}));
+  new Chart("g-mensal", {type: "bar", data: {labels: M.rotulos, datasets: mensais},
+    options: {scales: {y: Object.assign({}, eixoBRL, {beginAtZero: false}), x: eixoX}, plugins: {tooltip: tipBRL}}});
+
+  const MP = T.materia_prima;
+  new Chart("g-materia", {
+    type: "bar",
+    data: {labels: T.rotulos, datasets: Object.keys(MP).map((n, i) => barra(n, MP[n], S[i]))},
+    options: {scales: {x: Object.assign({stacked: true}, eixoX), y: Object.assign({stacked: true}, eixoBRL)},
+              plugins: {tooltip: Object.assign({}, tipBRL, {callbacks: Object.assign({}, tipBRL.callbacks, {
+                footer: (itens) => "Total: " + brl(itens.reduce((s, c) => s + (c.parsed.y || 0), 0))})})}},
+  });
+
+  const P = T.pct_receita;
+  new Chart("g-pct", {
+    type: "line",
+    data: {labels: T.rotulos, datasets: Object.keys(P).map((n, i) => linha(n, P[n], S[i]))},
+    options: {scales: {y: Object.assign({}, eixoPct, {beginAtZero: true}), x: eixoX}, plugins: {tooltip: tipPct}},
+  });
+
+  if (D.top.rotulos.length) new Chart("g-top", {
+    type: "bar",
+    data: {labels: D.top.rotulos, datasets: [barra("Despesa", D.top.valores, S[0])]},
+    options: {indexAxis: "y", scales: {x: Object.assign({}, eixoBRL), y: {grid: {display: false}, border: {color: grade}}},
+              plugins: {legend: {display: false}, tooltip: tipBRL}},
+  });
+
+  if (D.formas.rotulos.length) new Chart("g-formas", {
+    type: "bar",
+    data: {labels: D.formas.rotulos, datasets: [barra("Receita", D.formas.valores, S[0])]},
+    options: {indexAxis: "y", scales: {x: Object.assign({}, eixoBRL), y: {grid: {display: false}, border: {color: grade}}},
+              plugins: {legend: {display: false}, tooltip: tipBRL}},
+  });
+})();
+</script>
+{% endblock %}

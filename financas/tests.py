@@ -218,3 +218,83 @@ class TelasTests(TestCase):
             "arquivo": arq, "ano": 2025, "importar_regras": "on", "importar_lancamentos": "on", "coluna_valor": "D"})
         self.assertContains(resp, "Lançamentos importados: <b>8</b>")
         self.assertEqual(Lancamento.objects.filter(ano=2025).count(), 8)
+
+
+class DashboardTests(TestCase):
+    def setUp(self):
+        from decimal import Decimal as D
+        self.user = get_user_model().objects.create_user("pai2", password="senha-forte-123")
+        c = {c.codigo: c for c in Conta.objects.exclude(codigo="")}
+        transf = Conta.objects.create(nome="-> Transferência entre contas", nao_entra_no_dre=True)
+
+        def l(mes, cod, valor, secao="D", conta=None):
+            Lancamento.objects.create(ano=2026, mes=mes, secao=secao, descricao=f"x {cod}", valor=D(valor),
+                                      conta=conta if conta is not None else (c[cod] if cod else None),
+                                      classificacao="M" if cod or conta else "N")
+        # T3/26
+        l(7, "1.1", "600", "R"); l(8, "1.5", "400", "R")
+        l(7, "3.1", "-300")            # negativo: soma em módulo
+        l(9, "3.4", "100")
+        l(8, "5.1", "200")
+        l(8, "7.2", "50")
+        l(9, None, "500", conta=transf)  # fora do DRE
+        l(9, None, "50")                 # sem conta
+        # T2/26 (para comparação)
+        l(4, "1.1", "800", "R"); l(5, "3.1", "200"); l(6, "5.1", "200")
+
+    def test_indicadores(self):
+        from .dashboard import montar
+        d = montar(2026, 3)
+        a = d["atual"]
+        self.assertEqual(a["receita"], 1000)
+        self.assertEqual(a["cv"], 400)
+        self.assertEqual(a["mc"], 600)
+        self.assertEqual(a["mc_pct"], 60)
+        self.assertEqual(a["resultado"], 400)
+        self.assertAlmostEqual(float(a["ponto_equilibrio"]), 333.33, places=2)
+        self.assertEqual(a["logistica_pct"], 10)
+        self.assertEqual(a["mp_3.1_pct"], 30)
+        self.assertEqual(a["mao_obra_pct"], 20)
+        self.assertEqual(a["saldo_final"], 350)
+        self.assertEqual(d["qualidade"]["sem_conta_n"], 1)
+        self.assertEqual(d["qualidade"]["sem_conta_valor"], 50)
+        self.assertEqual(d["rotulo_anterior"], "T2/26")
+        receita = next(c for c in d["cartoes"] if c["chave"] == "receita")
+        self.assertEqual(receita["vs_anterior"]["delta"], 25)          # 1000 vs 800
+        mc_pct = next(c for c in d["cartoes"] if c["chave"] == "mc_pct")
+        self.assertEqual(mc_pct["vs_anterior"]["delta"], -15)          # 60% vs 75%
+        self.assertEqual(mc_pct["vs_anterior"]["unidade"], "p.p.")
+        self.assertEqual(d["graficos"]["tendencia"]["rotulos"], ["T2/26", "T3/26"])
+        self.assertTrue(any("Aço" in x["texto"] for x in d["alertas"]))
+        self.assertEqual(d["top"][0]["nome"], "Compras de Aço")
+
+    def test_ano_inteiro(self):
+        from .dashboard import montar
+        d = montar(2026, None)
+        self.assertEqual(d["atual"]["receita"], 1800)
+        self.assertEqual(d["rotulo_anterior"], "2025")
+
+    def test_pagina(self):
+        self.client.force_login(self.user)
+        for q in ["", "?ano=2026&tri=3", "?ano=2026&tri=ano", "?ano=2026&tri=1", "?ano=2019&tri=2"]:
+            r = self.client.get(reverse("dashboard") + q)
+            self.assertEqual(r.status_code, 200, q)
+        r = self.client.get(reverse("dashboard") + "?ano=2026&tri=3")
+        self.assertContains(r, "R$ 1.000")
+        self.assertContains(r, "60,0%")
+        self.assertContains(r, 'id="dados-graficos"')
+        self.assertContains(r, "1 sem conta")
+
+    def test_plano_de_contas_carregado(self):
+        self.assertEqual(Conta.objects.get(codigo="5.11").nome, "-> Energia Elétrica")
+        self.assertEqual(Conta.objects.exclude(codigo="").count(), 56)
+
+    def test_dados_demo(self):
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+        with self.assertRaises(CommandError):
+            call_command("dados_demo", "--anos", "2024", stdout=io.StringIO())
+        call_command("dados_demo", "--anos", "2024", "--forcar", stdout=io.StringIO())
+        self.assertTrue(Lancamento.objects.filter(ano=2024, descricao__startswith="[DEMO]").count() > 1000)
+        call_command("dados_demo", "--apagar", stdout=io.StringIO())
+        self.assertFalse(Lancamento.objects.filter(descricao__startswith="[DEMO]").exists())

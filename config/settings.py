@@ -84,7 +84,7 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 LOGIN_URL = "login"
-LOGIN_REDIRECT_URL = "lancamentos"
+LOGIN_REDIRECT_URL = "dashboard"
 LOGOUT_REDIRECT_URL = "login"
 
 # Sessão expira após 8 horas ou ao fechar o navegador.

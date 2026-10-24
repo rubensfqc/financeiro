@@ -18,6 +18,7 @@ urlpatterns = [
     path("contas/nova/", views.conta_form, name="conta_nova"),
     path("contas/<int:pk>/", views.conta_form, name="conta_editar"),
     path("resumo/", views.resumo, name="resumo"),
+    path("dashboard/", views.dashboard, name="dashboard"),
     path("historico/", views.historico, name="historico"),
     path("importar/", views.importar, name="importar"),
     path("exportar/", views.exportar, name="exportar"),

@@ -237,6 +237,26 @@ def resumo(request):
     })
 
 
+# ---------------------------------------------------------------- dashboard
+
+def dashboard(request):
+    from . import dashboard as dash
+
+    ano = int(request.GET.get("ano") or _ano_padrao())
+    tri = request.GET.get("tri", "")
+    if tri not in ("1", "2", "3", "4", "ano"):
+        # padrão: trimestre do último mês com lançamentos no ano
+        ultimo = Lancamento.objects.filter(ano=ano).order_by("-mes").values_list("mes", flat=True).first()
+        tri = str((ultimo - 1) // 3 + 1) if ultimo else "ano"
+    trimestre = None if tri == "ano" else int(tri)
+    dados = dash.montar(ano, trimestre)
+    tem_valores = Lancamento.objects.filter(ano=ano, valor__isnull=False).exists()
+    return render(request, "financas/dashboard.html", {
+        **dados, "anos": _anos(), "tri": tri, "tem_valores": tem_valores,
+        "opcoes_tri": [("1", "T1"), ("2", "T2"), ("3", "T3"), ("4", "T4"), ("ano", "Ano")],
+    })
+
+
 # ---------------------------------------------------------------- histórico
 
 MODELOS = {"lancamento": Lancamento, "regra": Regra, "conta": Conta}
