@@ -1,0 +1,52 @@
+{% extends "financas/base.html" %}
+{% load humanize %}
+{% block titulo %}Lançamentos {{ ano }}{% endblock %}
+{% block conteudo %}
+<div class="cabecalho">
+  <div>
+    <h1>Lançamentos {{ ano }}</h1>
+    <span class="muted">Troque a conta direto na tabela. Uma conta escolhida à mão fica travada e não é alterada pelas regras.</span>
+  </div>
+  <div class="acoes">
+    <a class="btn" href="{% url 'exportar' %}?ano={{ ano }}">Exportar .xlsx</a>
+    <a class="btn prim" href="{% url 'lancamento_novo' %}?ano={{ ano }}{% if f.mes %}&mes={{ f.mes }}{% endif %}">+ Novo lançamento</a>
+  </div>
+</div>
+
+<form class="filtros" method="get">
+  <label>Ano <select name="ano">{% for a in anos %}<option {% if a == ano %}selected{% endif %}>{{ a }}</option>{% endfor %}</select></label>
+  <label>Mês <select name="mes">{% for v, n in meses %}<option value="{{ v }}" {% if v == f.mes %}selected{% endif %}>{{ n }}</option>{% endfor %}</select></label>
+  <label>Seção <select name="secao"><option value="">Todas</option>{% for v, n in secoes %}<option value="{{ v }}" {% if v == f.secao %}selected{% endif %}>{{ n }}</option>{% endfor %}</select></label>
+  <label>Classificação <select name="classificacao"><option value="">Todas</option>{% for v, n in classificacoes %}<option value="{{ v }}" {% if v == f.classificacao %}selected{% endif %}>{{ n }}</option>{% endfor %}</select></label>
+  <label>Conta <select name="conta"><option value="">Todas</option>{% for c in contas %}<option value="{{ c.pk }}" {% if c.pk|stringformat:"s" == f.conta %}selected{% endif %}>{{ c }}</option>{% endfor %}</select></label>
+  <label>Descrição <input name="q" value="{{ f.q|default:'' }}" placeholder="buscar…"></label>
+  <button class="btn prim">Filtrar</button>
+  <a class="btn" href="?ano={{ ano }}">Limpar</a>
+</form>
+
+<div class="numeros">
+  <div class="cartao"><span class="muted small">Lançamentos</span><b>{{ totais.n|intcomma }}</b></div>
+  <div class="cartao"><span class="muted small">Sem regra</span><b>{{ totais.sem|intcomma }}</b>
+    {% if totais.sem %}<a class="small" href="?ano={{ ano }}&classificacao=N">ver</a>{% endif %}</div>
+  <div class="cartao"><span class="muted small">Corrigidos à mão</span><b>{{ totais.manuais|intcomma }}</b></div>
+  {% if totais.soma is not None %}<div class="cartao"><span class="muted small">Soma dos valores</span><b>{{ totais.soma|floatformat:2|intcomma }}</b></div>{% endif %}
+</div>
+
+<div class="tabela-wrap">
+<table>
+  <thead><tr><th>Mês</th><th>Seção</th><th>Descrição</th><th class="num">Valor</th><th>Plano de contas</th><th>Classificação</th><th></th></tr></thead>
+  <tbody>
+  {% for l in pagina %}{% include "financas/_linha.html" %}
+  {% empty %}<tr><td colspan="7" class="muted">Nenhum lançamento. <a href="{% url 'importar' %}">Importe a planilha</a> ou crie um novo.</td></tr>{% endfor %}
+  </tbody>
+</table>
+</div>
+
+{% if pagina.paginator.num_pages > 1 %}
+<div class="paginacao">
+  {% if pagina.has_previous %}<a class="btn" href="?{{ querystring }}&page={{ pagina.previous_page_number }}">← Anterior</a>{% endif %}
+  <span class="muted">Página {{ pagina.number }} de {{ pagina.paginator.num_pages }}</span>
+  {% if pagina.has_next %}<a class="btn" href="?{{ querystring }}&page={{ pagina.next_page_number }}">Próxima →</a>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

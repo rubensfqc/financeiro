@@ -1,0 +1,30 @@
+{% extends "financas/base.html" %}
+{% load humanize %}
+{% block titulo %}Resumo {{ ano }}{% endblock %}
+{% block conteudo %}
+<div class="cabecalho">
+  <div><h1>Resumo por conta – {{ ano }}</h1>
+    {% if not tem_valor %}<span class="muted">Os lançamentos ainda não têm valores; a tabela mostra a quantidade de lançamentos por conta.</span>{% endif %}
+  </div>
+  <form method="get" class="acoes">
+    <select name="ano" onchange="this.form.submit()">{% for a in anos %}<option {% if a == ano %}selected{% endif %}>{{ a }}</option>{% endfor %}</select>
+  </form>
+</div>
+{% for s in secoes %}{% if s.linhas %}
+<h2>{{ s.rotulo }}s</h2>
+<div class="tabela-wrap"><table>
+  <thead><tr><th>Código</th><th>Conta</th>{% if tem_valor %}{% for m in meses %}<th class="num">{{ m }}</th>{% endfor %}<th class="num">Total</th>{% else %}<th class="num">Lançamentos</th>{% endif %}</tr></thead>
+  <tbody>
+  {% for l in s.linhas %}
+    <tr {% if l.fora %}class="muted"{% endif %}{% if l.nome == '(sem conta)' %} class="sem-regra"{% endif %}>
+      <td>{{ l.codigo }}</td>
+      <td>{{ l.nome }}{% if l.fora %} <span class="small">(fora do total)</span>{% endif %}</td>
+      {% if tem_valor %}{% for v in l.meses %}<td class="num">{% if v %}{{ v|floatformat:2|intcomma }}{% endif %}</td>{% endfor %}<td class="num"><b>{{ l.total|floatformat:2|intcomma }}</b></td>
+      {% else %}<td class="num">{{ l.n }}</td>{% endif %}
+    </tr>
+  {% endfor %}
+  {% if tem_valor %}<tr class="total"><td></td><td>Total {{ s.rotulo|lower }}s</td>{% for v in s.total_meses %}<td class="num">{{ v|floatformat:2|intcomma }}</td>{% endfor %}<td class="num">{{ s.total|floatformat:2|intcomma }}</td></tr>{% endif %}
+  </tbody>
+</table></div>
+{% endif %}{% empty %}{% endfor %}
+{% endblock %}

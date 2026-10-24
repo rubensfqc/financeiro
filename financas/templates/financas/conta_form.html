@@ -1,0 +1,9 @@
+{% extends "financas/base.html" %}
+{% block conteudo %}
+<h1>{% if conta %}Conta “{{ conta.nome }}”{% else %}Nova conta{% endif %}</h1>
+<form method="post" class="formulario cartao">{% csrf_token %}
+  {{ form.as_p }}
+  <p class="small muted">Contas não são excluídas, para não perder o histórico. Desmarque “Ativa” para escondê-la das listas.</p>
+  <div class="acoes"><button class="btn prim">Salvar</button><a class="btn" href="{% url 'contas' %}">Cancelar</a></div>
+</form>
+{% endblock %}

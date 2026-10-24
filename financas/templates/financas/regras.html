@@ -1,0 +1,69 @@
+{% extends "financas/base.html" %}
+{% block titulo %}Regras{% endblock %}
+{% block conteudo %}
+<div class="cabecalho">
+  <div>
+    <h1>Regras de classificação</h1>
+    <span class="muted">Se mais de uma regra servir, vence a de maior <b>ordem</b> (exceções ganham número alto). Ao salvar, os lançamentos automáticos são reclassificados.</span>
+  </div>
+  <div class="acoes">
+    <form method="post" action="{% url 'reclassificar' %}">{% csrf_token %}<input type="hidden" name="next" value="{% url 'regras' %}"><button class="btn">↺ Reaplicar regras</button></form>
+    <a class="btn prim" href="{% url 'regra_nova' %}">+ Nova regra</a>
+  </div>
+</div>
+
+<div class="duas-colunas" style="grid-template-columns: minmax(0,1fr) 340px">
+<div>
+  <form class="filtros" method="get">
+    <label>Buscar <input name="q" value="{{ q }}" placeholder="palavra, conta…"></label>
+    <label>Conta <select name="conta"><option value="">Todas</option>{% for c in contas %}<option value="{{ c.pk }}" {% if c.pk|stringformat:"s" == conta_sel %}selected{% endif %}>{{ c }}</option>{% endfor %}</select></label>
+    <button class="btn prim">Filtrar</button>
+  </form>
+  <div class="tabela-wrap"><table>
+    <thead><tr><th class="num">Ordem</th><th>Palavra-chave</th><th>Tipo</th><th>Seção</th><th>Conta</th><th class="num">Usos</th><th></th></tr></thead>
+    <tbody>{% for r in regras %}
+      <tr {% if not r.ativa %}class="muted"{% endif %}>
+        <td class="num">{{ r.ordem }}</td>
+        <td><b>{{ r.palavra }}</b>{% if r.observacao %}<br><span class="muted small">{{ r.observacao }}</span>{% endif %}</td>
+        <td>{{ r.get_tipo_display }}</td>
+        <td>{{ r.get_secao_display }}</td>
+        <td>{{ r.conta }}</td>
+        <td class="num">{{ r.uso }}</td>
+        <td>{% if not r.ativa %}<span class="etiqueta x">inativa</span> {% endif %}<a href="{% url 'regra_editar' r.pk %}">editar</a></td>
+      </tr>
+    {% empty %}<tr><td colspan="7" class="muted">Nenhuma regra.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+
+<div>
+  <div class="cartao">
+    <h2 style="margin-top:0">Testar uma descrição</h2>
+    <form method="get" style="display:grid; gap:8px">
+      <input name="testar" value="{{ teste.descricao|default:'' }}" placeholder="ex.: FRETE BRASPRESS NF 123">
+      <select name="secao_teste">
+        <option value="D" {% if teste.secao != 'R' %}selected{% endif %}>Despesa</option>
+        <option value="R" {% if teste.secao == 'R' %}selected{% endif %}>Receita</option>
+      </select>
+      <button class="btn">Testar</button>
+    </form>
+    {% if teste %}
+      {% if teste.vencedora %}
+        <p class="sugestao">→ <b>{{ teste.vencedora.conta }}</b><br><span class="small">regra “{{ teste.vencedora.palavra }}” (ordem {{ teste.vencedora.ordem }})</span></p>
+        {% if teste.outras %}<p class="small muted">Também serviriam, mas perdem pela ordem:</p>
+        <ul class="small">{% for r in teste.outras %}<li>{{ r.palavra }} → {{ r.conta }} (ordem {{ r.ordem }})</li>{% endfor %}</ul>{% endif %}
+      {% else %}<p class="sugestao vazia">Nenhuma regra serve.</p>{% endif %}
+    {% endif %}
+  </div>
+
+  {% if sem_regra %}
+  <div class="cartao" style="margin-top:12px">
+    <h2 style="margin-top:0">Descrições sem regra</h2>
+    <p class="small muted">As mais frequentes. Clique para criar uma regra.</p>
+    <ul class="small" style="padding-left:16px">{% for s in sem_regra %}
+      <li><a href="{% url 'regra_nova' %}?palavra={{ s.descricao|truncatewords:1|cut:'…'|urlencode }}&secao={{ s.secao }}">{{ s.descricao }}</a> <span class="muted">({{ s.n }}×)</span></li>
+    {% endfor %}</ul>
+  </div>
+  {% endif %}
+</div>
+</div>
+{% endblock %}

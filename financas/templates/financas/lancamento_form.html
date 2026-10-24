@@ -1,0 +1,39 @@
+{% extends "financas/base.html" %}
+{% block conteudo %}
+<div class="cabecalho"><h1>{% if lanc %}Editar lançamento{% else %}Novo lançamento{% endif %}</h1></div>
+<div class="duas-colunas">
+  <form method="post" class="formulario cartao">{% csrf_token %}
+    {% if form.non_field_errors %}<div class="erros">{{ form.non_field_errors }}</div>{% endif %}
+    {% for campo in form %}
+      <p>{{ campo.label_tag }} {{ campo }}
+        {% if campo.help_text %}<span class="helptext">{{ campo.help_text }}</span>{% endif %}
+        {% if campo.errors %}<span class="erros">{{ campo.errors|join:" " }}</span>{% endif %}
+      </p>
+      {% if campo.name == "descricao" %}
+      <div id="sugestao" hx-get="{% url 'sugerir' %}" hx-trigger="load, keyup changed delay:300ms from:#id_descricao, change from:#id_secao"
+           hx-include="#id_descricao, #id_secao">{% if lanc %}{% endif %}</div>
+      {% endif %}
+    {% endfor %}
+    <div class="acoes">
+      <button class="btn prim">Salvar</button>
+      {% if not lanc %}<button class="btn" name="salvar_e_novo" value="1">Salvar e adicionar outro</button>{% endif %}
+      <a class="btn" href="{% url 'lancamentos' %}{% if lanc %}?ano={{ lanc.ano }}&mes={{ lanc.mes }}{% endif %}">Cancelar</a>
+    </div>
+  </form>
+  <div>
+    {% if lanc %}
+    <div class="cartao">
+      <p style="margin-top:0">Classificação atual: <span class="etiqueta {{ lanc.classificacao }}">{{ lanc.get_classificacao_display }}</span>
+        {% if lanc.conta %} — <b>{{ lanc.conta }}</b>{% endif %}
+        {% if lanc.regra %}<br><span class="muted small">pela regra <a href="{% url 'regra_editar' lanc.regra.pk %}">{{ lanc.regra.palavra }}</a></span>{% endif %}
+        {% if lanc.linha_planilha %}<br><span class="muted small">Importado da linha {{ lanc.linha_planilha }} da aba {{ lanc.get_mes_display }}</span>{% endif %}
+      </p>
+      <form method="post" action="{% url 'lancamento_excluir' lanc.pk %}" onsubmit="return confirm('Excluir este lançamento?')">{% csrf_token %}
+        <button class="btn perigo">Excluir lançamento</button>
+      </form>
+    </div>
+    {% include "financas/_historico.html" %}
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

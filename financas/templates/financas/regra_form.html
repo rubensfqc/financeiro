@@ -1,0 +1,29 @@
+{% extends "financas/base.html" %}
+{% block conteudo %}
+<div class="cabecalho"><h1>{% if regra %}Regra “{{ regra.palavra }}”{% else %}Nova regra{% endif %}</h1></div>
+<div class="duas-colunas">
+  <form method="post" class="formulario cartao">{% csrf_token %}
+    {{ form.as_p }}
+    <p class="small muted">“Contém”: a palavra aparece no início de qualquer palavra da descrição. “Começa com”: a descrição começa com ela. Maiúsculas não importam; acentos sim (cadastre AÇO e ACO).</p>
+    <div class="acoes">
+      <button class="btn prim">Salvar e reclassificar</button>
+      <a class="btn" href="{% url 'regras' %}">Cancelar</a>
+    </div>
+  </form>
+  <div>
+    {% if regra %}
+    <form method="post" action="{% url 'regra_excluir' regra.pk %}" onsubmit="return confirm('Excluir esta regra? Os lançamentos que ela classificava serão reclassificados.')">{% csrf_token %}
+      <button class="btn perigo">Excluir regra</button>
+      <span class="small muted">Dica: para suspender sem apagar, desmarque “Ativa”.</span>
+    </form>
+    {% if afetados %}
+    <h2>Lançamentos classificados por ela (últimos 20)</h2>
+    <div class="tabela-wrap"><table><tbody>{% for l in afetados %}
+      <tr><td>{{ l.get_mes_display }}/{{ l.ano }}</td><td><a href="{% url 'lancamento_editar' l.pk %}">{{ l.descricao }}</a></td></tr>
+    {% endfor %}</tbody></table></div>
+    {% endif %}
+    {% include "financas/_historico.html" %}
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

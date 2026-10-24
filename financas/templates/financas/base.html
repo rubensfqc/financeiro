@@ -1,0 +1,39 @@
+{% load static %}<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block titulo %}Gestão Financeira{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'financas/style.css' %}">
+  <script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
+</head>
+<body hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+{% if user.is_authenticated %}
+<header class="topo">
+  <div class="wrap">
+    <a class="marca" href="{% url 'lancamentos' %}">Gestão Financeira</a>
+    {% with u=request.resolver_match.url_name %}
+    <nav>
+      <a href="{% url 'lancamentos' %}" class="{% if u == 'lancamentos' or 'lancamento' in u %}ativo{% endif %}">Lançamentos</a>
+      <a href="{% url 'resumo' %}" class="{% if u == 'resumo' %}ativo{% endif %}">Resumo</a>
+      <a href="{% url 'regras' %}" class="{% if 'regra' in u %}ativo{% endif %}">Regras</a>
+      <a href="{% url 'contas' %}" class="{% if 'conta' in u %}ativo{% endif %}">Contas</a>
+      <a href="{% url 'historico' %}" class="{% if u == 'historico' %}ativo{% endif %}">Histórico</a>
+      <a href="{% url 'importar' %}" class="{% if u == 'importar' %}ativo{% endif %}">Importar</a>
+      {% if user.is_staff %}<a href="{% url 'admin:index' %}">Usuários</a>{% endif %}
+    </nav>
+    {% endwith %}
+    <div class="usuario">
+      <span>{{ user.get_full_name|default:user.username }}</span>
+      <a href="{% url 'password_change' %}" style="color:#d6e2ee">Senha</a>
+      <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button>Sair</button></form>
+    </div>
+  </div>
+</header>
+{% endif %}
+<main class="wrap">
+  {% if messages %}<ul class="mensagens">{% for m in messages %}<li class="{{ m.tags }}">{{ m }}</li>{% endfor %}</ul>{% endif %}
+  {% block conteudo %}{% endblock %}
+</main>
+</body>
+</html>

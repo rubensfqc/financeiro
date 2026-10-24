@@ -1,0 +1,32 @@
+{% extends "financas/base.html" %}
+{% block titulo %}Importar planilha{% endblock %}
+{% block conteudo %}
+<div class="cabecalho"><div><h1>Importar planilha</h1>
+  <span class="muted">Lê a aba <b>Regras</b> (palavras-chave e contas válidas) e as abas de mês <b>Jan…Dez</b> da planilha Gestão Financeira.</span></div></div>
+<div class="duas-colunas">
+  <form method="post" enctype="multipart/form-data" class="formulario cartao">{% csrf_token %}
+    {% if form.non_field_errors %}<div class="erros">{{ form.non_field_errors|join:" " }}</div>{% endif %}
+    {{ form.as_p }}
+    <p class="small muted">Contas que a planilha corrigiu à mão (diferentes do que as regras dariam) entram como “Manual” e ficam travadas. Tudo o que for apagado ou criado fica registrado no histórico.</p>
+    <div><button class="btn prim">Importar</button></div>
+  </form>
+  {% if resultado %}
+  <div class="cartao">
+    <h2 style="margin-top:0">Resultado</h2>
+    <ul>
+      <li>Contas novas: <b>{{ resultado.contas }}</b></li>
+      <li>Regras importadas: <b>{{ resultado.regras }}</b></li>
+      <li>Lançamentos importados: <b>{{ resultado.lancamentos }}</b>
+        <ul>
+          <li>classificados pelas regras: {{ resultado.automaticos }}</li>
+          <li>com conta corrigida à mão na planilha: {{ resultado.manuais }}</li>
+          <li>sem regra: {{ resultado.sem_regra }}</li>
+        </ul>
+      </li>
+      {% if resultado.reclassificados %}<li>Lançamentos de outros anos reclassificados: {{ resultado.reclassificados }}</li>{% endif %}
+    </ul>
+    <a class="btn prim" href="{% url 'lancamentos' %}">Ver lançamentos</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

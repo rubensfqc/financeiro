@@ -1,0 +1,53 @@
+{% extends "financas/base.html" %}
+{% block titulo %}Histórico{% endblock %}
+{% block conteudo %}
+<div class="cabecalho">
+  <div><h1>Histórico de alterações</h1>
+    <span class="muted">Toda criação, alteração e exclusão de lançamentos, regras e contas, com quem fez e quando.</span></div>
+</div>
+<form class="filtros" method="get">
+  <label>Tipo de registro <select name="modelo">
+    <option value="">Todos</option>
+    <option value="lancamento" {% if f.modelo == 'lancamento' %}selected{% endif %}>Lançamentos</option>
+    <option value="regra" {% if f.modelo == 'regra' %}selected{% endif %}>Regras</option>
+    <option value="conta" {% if f.modelo == 'conta' %}selected{% endif %}>Contas</option>
+  </select></label>
+  <label>Ação <select name="tipo"><option value="">Todas</option>{% for k, v in tipos.items %}<option value="{{ k }}" {% if f.tipo == k %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></label>
+  <label>Usuário <select name="usuario"><option value="">Todos</option>{% for u in usuarios %}<option value="{{ u.pk }}" {% if u.pk|stringformat:"s" == f.usuario %}selected{% endif %}>{{ u.username }}</option>{% endfor %}</select></label>
+  <label>De <input type="date" name="de" value="{{ f.de|default:'' }}"></label>
+  <label>Até <input type="date" name="ate" value="{{ f.ate|default:'' }}"></label>
+  <label>Texto <input name="q" value="{{ f.q|default:'' }}" placeholder="descrição, palavra…"></label>
+  <button class="btn prim">Filtrar</button>
+  <a class="btn" href="?">Limpar</a>
+</form>
+
+<div class="tabela-wrap"><table>
+  <thead><tr><th>Quando</th><th>Quem</th><th>Registro</th><th>Alteração</th></tr></thead>
+  <tbody>{% for h in pagina %}
+  <tr>
+    <td class="small" style="white-space:nowrap">{{ h.history_date|date:"d/m/Y H:i:s" }}</td>
+    <td>{{ h.history_user|default:"—" }}</td>
+    <td>
+      <span class="muted small">{% if h.modelo == 'lancamento' %}Lançamento{% elif h.modelo == 'regra' %}Regra{% else %}Conta{% endif %}</span><br>
+      {% if h.history_type != '-' %}
+        {% if h.modelo == 'lancamento' %}<a href="{% url 'lancamento_editar' h.id %}">{{ h.descricao }}</a> <span class="muted small">{{ h.get_mes_display }}/{{ h.ano }}</span>
+        {% elif h.modelo == 'regra' %}<a href="{% url 'regra_editar' h.id %}">{{ h.palavra }}</a>
+        {% else %}<a href="{% url 'conta_editar' h.id %}">{{ h.nome }}</a>{% endif %}
+      {% else %}{% if h.modelo == 'lancamento' %}{{ h.descricao }} <span class="muted small">{{ h.get_mes_display }}/{{ h.ano }}</span>{% elif h.modelo == 'regra' %}{{ h.palavra }}{% else %}{{ h.nome }}{% endif %}{% endif %}
+    </td>
+    <td>
+      <span class="etiqueta {% if h.history_type == '+' %}c{% elif h.history_type == '-' %}x{% else %}A{% endif %}">{{ h.tipo_txt }}</span>
+      {% if h.history_change_reason %}<span class="muted small">{{ h.history_change_reason }}</span>{% endif %}
+      {% if h.mudancas %}<ul class="mudancas">{% for campo, de, para in h.mudancas %}<li>{{ campo }}: <del>{{ de }}</del> → <ins>{{ para }}</ins></li>{% endfor %}</ul>{% endif %}
+    </td>
+  </tr>
+  {% empty %}<tr><td colspan="4" class="muted">Nada encontrado.</td></tr>{% endfor %}</tbody>
+</table></div>
+{% if pagina.paginator.num_pages > 1 %}
+<div class="paginacao">
+  {% if pagina.has_previous %}<a class="btn" href="?{{ querystring }}&page={{ pagina.previous_page_number }}">← Mais recentes</a>{% endif %}
+  <span class="muted">Página {{ pagina.number }} de {{ pagina.paginator.num_pages }}</span>
+  {% if pagina.has_next %}<a class="btn" href="?{{ querystring }}&page={{ pagina.next_page_number }}">Mais antigas →</a>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

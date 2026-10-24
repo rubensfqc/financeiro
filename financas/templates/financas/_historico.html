@@ -1,0 +1,16 @@
+{% if historico %}
+<h2>Histórico de alterações</h2>
+<div class="tabela-wrap"><table>
+  <thead><tr><th>Quando</th><th>Quem</th><th>O quê</th></tr></thead>
+  <tbody>{% for h in historico %}
+  <tr>
+    <td class="small" style="white-space:nowrap">{{ h.history_date|date:"d/m/Y H:i" }}</td>
+    <td>{{ h.history_user|default:"—" }}</td>
+    <td>
+      <span class="etiqueta {% if h.history_type == '+' %}c{% elif h.history_type == '-' %}x{% else %}A{% endif %}">{{ h.tipo_txt }}</span>
+      {% if h.history_change_reason %}<span class="muted small">{{ h.history_change_reason }}</span>{% endif %}
+      {% if h.mudancas %}<ul class="mudancas">{% for campo, de, para in h.mudancas %}<li>{{ campo }}: <del>{{ de }}</del> → <ins>{{ para }}</ins></li>{% endfor %}</ul>{% endif %}
+    </td>
+  </tr>{% endfor %}</tbody>
+</table></div>
+{% endif %}

@@ -1,0 +1,2 @@
+{% if regra %}<div class="sugestao">Pelas regras: <b>{{ regra.conta }}</b> <span class="small">(palavra-chave “{{ regra.palavra }}”)</span></div>
+{% elif desc %}<div class="sugestao vazia">Nenhuma regra serve para esta descrição — escolha a conta abaixo ou <a href="{% url 'regra_nova' %}">cadastre uma regra</a>.</div>{% endif %}
