@@ -1,6 +1,12 @@
 """Importação e exportação da planilha Gestão Financeira (.xlsx).
 
-Estrutura esperada (a mesma da planilha com classificação automática):
+São aceitos dois formatos, reconhecidos automaticamente:
+
+1. A planilha exportada pelo app (botão "Exportar .xlsx"): abas "Lançamentos <ano>",
+   "Regras", "Bancos" e "Plano de contas", com cabeçalho na linha 1. As colunas
+   são achadas pelo nome do cabeçalho, então exportações antigas também servem.
+
+2. A planilha modelo (Gestão Financeira), com classificação automática:
 - Aba "Regras": cabeçalho na linha 4, regras a partir da linha 5
   (A Palavra-chave | B Tipo de busca | C Seção | D Plano de Contas | E Observação),
   e a lista de contas válidas na coluna H a partir da linha 5.
@@ -262,35 +268,245 @@ def _linhas_mes(wb, mes_nome):
         yield linha, secao, desc, _texto(ws.cell(linha, 3).value)
 
 
+# ---------------------------------------------------------------- formatos
+
+PREFIXO_ABA_EXPORTADA = ("lancamentos",)  # "Lançamentos 2026", comparado sem acento
+CLASSIFICACOES = {"automatica": "A", "manual": "M", "sem regra": "N"}
+
+
+def _norm(v):
+    from .contas import chave
+    return chave(v)
+
+
+def formato(wb):
+    """'exportada' (gerada pelo botão Exportar do app) ou 'modelo' (planilha Gestão Financeira)."""
+    if _aba_exportada(wb):
+        return "exportada"
+    if any(m in wb.sheetnames for m in ABAS_MESES):
+        return "modelo"
+    raise ErroImportacao("Não reconheci a planilha: ela precisa ter as abas de mês (Jan, Fev, …) "
+                         "ou a aba “Lançamentos <ano>” gerada pelo botão Exportar.")
+
+
+def _aba_exportada(wb):
+    for nome in wb.sheetnames:
+        if _norm(nome).startswith(PREFIXO_ABA_EXPORTADA):
+            return nome
+    return None
+
+
+def ano_da_planilha(wb):
+    """Ano escrito no nome da aba exportada ("Lançamentos 2026"), ou None."""
+    aba = _aba_exportada(wb)
+    m = re.search(r"(\d{4})", aba or "")
+    return int(m.group(1)) if m else None
+
+
+def _cabecalho(ws, obrigatorias, max_linha=10):
+    """Acha a linha de cabeçalho e devolve (linha, {nome normalizado: coluna})."""
+    for linha in range(1, max_linha + 1):
+        cols = {}
+        for c in range(1, min(ws.max_column, 40) + 1):
+            v = ws.cell(linha, c).value
+            if v is not None and _norm(v):
+                cols.setdefault(_norm(v), c)
+        if all(o in cols for o in obrigatorias):
+            return linha, cols
+    return None, {}
+
+
+def _ler_regras(wb, conta_de):
+    """Regras da aba "Regras" (modelo: cabeçalho na linha 4; exportada: linha 1)."""
+    if "Regras" not in wb.sheetnames:
+        raise ErroImportacao('A planilha não tem a aba "Regras".')
+    ws = wb["Regras"]
+    linha_cab, cols = _cabecalho(ws, ["palavra-chave", "plano de contas"])
+    if not linha_cab:
+        raise ErroImportacao('Não achei o cabeçalho da aba "Regras" (colunas “Palavra-chave” e “Plano de Contas”).')
+    if "contas validas" in cols:  # lista de contas válidas da planilha modelo
+        for linha in range(linha_cab + 1, ws.max_row + 1):
+            nome = _texto(ws.cell(linha, cols["contas validas"]).value)
+            if nome:
+                conta_de(nome)
+    get = lambda linha, nome: ws.cell(linha, cols[nome]).value if nome in cols else None
+    regras = []
+    for linha in range(linha_cab + 1, ws.max_row + 1):
+        palavra, conta = _texto(get(linha, "palavra-chave")), _texto(get(linha, "plano de contas"))
+        if not palavra or not conta:
+            continue
+        ativa = _norm(get(linha, "ativa"))
+        regras.append(Regra(
+            palavra=palavra,
+            tipo=TIPOS.get(_texto(get(linha, "tipo de busca")).upper(), "C"),
+            secao=SECOES.get(_texto(get(linha, "secao")).upper(), "A"),
+            conta=conta_de(conta), ordem=linha,
+            observacao=_texto(get(linha, "observacao"))[:200],
+            ativa=ativa not in ("nao", "n", "false", "0"),
+        ))
+    return regras
+
+
+def _ler_bancos_e_plano(wb, resumo):
+    """Abas "Bancos" e "Plano de contas" da planilha exportada: cria/atualiza pelo nome."""
+    from .models import Banco
+
+    if "Bancos" in wb.sheetnames:
+        ws = wb["Bancos"]
+        linha_cab, cols = _cabecalho(ws, ["banco"])
+        campos = {"coluna na planilha": "coluna_planilha", "instituicao": "banco", "agencia": "agencia",
+                  "numero da conta": "numero_conta", "titular": "titular", "observacao": "observacao"}
+        existentes = {_norm(b.nome): b for b in Banco.objects.all()}
+        for linha in range(linha_cab + 1, ws.max_row + 1) if linha_cab else []:
+            nome = _texto(ws.cell(linha, cols["banco"]).value)
+            if not nome:
+                continue
+            dados = {campo: _texto(ws.cell(linha, cols[k]).value) for k, campo in campos.items() if k in cols}
+            if "coluna_planilha" in dados:
+                dados["coluna_planilha"] = dados["coluna_planilha"].upper()[:3]
+            if "ativo" in cols:
+                dados["ativo"] = _norm(ws.cell(linha, cols["ativo"]).value) not in ("nao", "n", "false", "0")
+            b = existentes.get(_norm(nome))
+            if b is None:
+                b = Banco(nome=nome)
+                resumo["bancos_novos"] = resumo.get("bancos_novos", 0) + 1
+            mudou = [k for k, v in dados.items() if getattr(b, k) != v]
+            if b.pk is None or mudou:
+                if dados.get("coluna_planilha") and Banco.objects.filter(
+                        coluna_planilha=dados["coluna_planilha"]).exclude(pk=b.pk).exists():
+                    dados.pop("coluna_planilha")  # não rouba a coluna de outro banco
+                for k, v in dados.items():
+                    setattr(b, k, v)
+                b._change_reason = "Importação da planilha exportada"
+                b.save()
+                existentes[_norm(nome)] = b
+
+    if "Plano de contas" in wb.sheetnames:
+        ws = wb["Plano de contas"]
+        linha_cab, cols = _cabecalho(ws, ["codigo", "plano de contas"])
+        from .contas import Resolvedor as _R
+        conta_de = _R(Conta)
+        for linha in range(linha_cab + 1, ws.max_row + 1) if linha_cab else []:
+            nome = _texto(ws.cell(linha, cols["plano de contas"]).value)
+            if not nome:
+                continue
+            conta = conta_de(nome)
+            codigo = _texto(ws.cell(linha, cols["codigo"]).value)
+            fora = _norm(ws.cell(linha, cols["fora do dre"]).value) == "sim" if "fora do dre" in cols else None
+            alterar = {}
+            if codigo and not conta.codigo and not Conta.objects.filter(codigo=codigo).exclude(pk=conta.pk).exists():
+                alterar["codigo"] = codigo
+            if fora is not None and fora != conta.nao_entra_no_dre:
+                alterar["nao_entra_no_dre"] = fora
+            if alterar:
+                for k, v in alterar.items():
+                    setattr(conta, k, v)
+                conta._change_reason = "Importação da planilha exportada"
+                conta.save()
+
+
+def _banco_por_nome(nome, cache):
+    from .models import Banco
+
+    nome = _texto(nome)
+    if not nome:
+        return None
+    k = _norm(nome)
+    if k not in cache:
+        cache[k] = (Banco.objects.filter(nome__iexact=nome).first()
+                    or next((b for b in Banco.objects.all() if _norm(b.nome) == k), None)
+                    or Banco.objects.create(nome=nome))
+    return cache[k]
+
+
+def _itens_exportada(wb, resumo):
+    """Lançamentos da aba "Lançamentos <ano>" (um por linha, colunas pelo cabeçalho)."""
+    ws = wb[_aba_exportada(wb)]
+    linha_cab, cols = _cabecalho(ws, ["mes", "descricao"])
+    if not linha_cab:
+        raise ErroImportacao("Não achei o cabeçalho da aba de lançamentos (colunas “Mês” e “Descrição”).")
+    meses = {_norm(n): num for num, n in MESES}
+    bancos = {}
+    get = lambda linha, nome: ws.cell(linha, cols[nome]).value if nome in cols else None
+    for linha in range(linha_cab + 1, ws.max_row + 1):
+        desc = _texto(get(linha, "descricao"))
+        mes_txt = get(linha, "mes")
+        if not desc:
+            continue
+        mes = meses.get(_norm(mes_txt)) or (int(mes_txt) if str(mes_txt).isdigit() and 1 <= int(mes_txt) <= 12 else None)
+        if mes is None:
+            resumo.setdefault("linhas_ignoradas", []).append(f"linha {linha} (mês “{_texto(mes_txt)}”)")
+            continue
+        valor = _valor_celula(wb, ws.title, linha, cols["valor"]) if "valor" in cols else None
+        banco = _banco_por_nome(get(linha, "banco"), bancos)
+        if valor is not None:
+            resumo["com_valor"] += 1
+        if banco is not None:
+            resumo["com_banco"] += 1
+        linha_original = get(linha, "linha na planilha")
+        yield {
+            "mes": mes, "secao": "R" if _norm(get(linha, "secao")).startswith("rec") else "D",
+            "descricao": desc, "conta": _texto(get(linha, "plano de contas")),
+            "valor": valor, "banco": banco,
+            "linha_planilha": int(linha_original) if str(linha_original or "").isdigit() else None,
+            "classificacao": CLASSIFICACOES.get(_norm(get(linha, "classificacao"))),
+            "id": int(get(linha, "id")) if str(get(linha, "id") or "").isdigit() else None,
+        }
+
+
+def _itens_modelo(wb, col_valor, resumo):
+    bancos = _colunas_bancos()
+    for mes_num, mes_nome in MESES:
+        if mes_nome not in wb.sheetnames:
+            continue
+        for linha, secao, desc, conta_planilha in _linhas_mes(wb, mes_nome):
+            valor, banco = _valor_e_banco(wb, mes_nome, linha, col_valor, bancos, resumo)
+            yield {"mes": mes_num, "secao": secao, "descricao": desc, "conta": conta_planilha,
+                   "valor": valor, "banco": banco, "linha_planilha": linha, "classificacao": None, "id": None,
+                   "aba": mes_nome}
+
+
+# ---------------------------------------------------------------- importação
+
 @transaction.atomic
 def atualizar_valores(wb, ano, usuario=None, coluna_valor=COLUNA_VALOR_PADRAO):
-    """Só preenche/atualiza valor e banco dos lançamentos já importados (mesmo mês, linha e descrição).
+    """Só preenche/atualiza valor e banco dos lançamentos já importados.
 
+    Planilha modelo: casa pelo mês, linha e descrição. Planilha exportada: pela
+    coluna ID (ou, se não houver, pelo mês, linha original e descrição).
     Não mexe em plano de contas, regras nem nas correções feitas no app.
     """
     from simple_history.utils import bulk_update_with_history
 
-    col = column_index_from_string((coluna_valor or COLUNA_VALOR_PADRAO).upper())
-    existentes = {(l.mes, l.linha_planilha, l.descricao): l
-                  for l in Lancamento.objects.filter(ano=ano, linha_planilha__isnull=False)}
-    bancos = _colunas_bancos()
-    resumo = {}
+    fmt = formato(wb)
+    if fmt == "exportada":
+        ano = ano_da_planilha(wb) or ano
+    resumo = {"com_valor": 0, "com_banco": 0, "formato": fmt, "ano": ano}
+    doano = list(Lancamento.objects.filter(ano=ano))
+    por_id = {l.id: l for l in doano}
+    por_linha = {(l.mes, l.linha_planilha, l.descricao): l for l in doano if l.linha_planilha}
+    if fmt == "exportada":
+        itens = _itens_exportada(wb, resumo)
+    else:
+        itens = _itens_modelo(wb, column_index_from_string((coluna_valor or COLUNA_VALOR_PADRAO).upper()), resumo)
     alterados, nao_achados, iguais = [], 0, 0
-    for mes_num, mes_nome in MESES:
-        if mes_nome not in wb.sheetnames:
+    for it in itens:
+        lanc = por_id.get(it["id"]) if it["id"] else None
+        if lanc is not None and (lanc.mes, lanc.descricao) != (it["mes"], it["descricao"][:255]):
+            lanc = None  # ID de outro banco de dados: não confia
+        if lanc is None:
+            lanc = por_linha.get((it["mes"], it["linha_planilha"], it["descricao"][:255]))
+        if lanc is None:
+            nao_achados += 1
             continue
-        for linha, _secao, desc, _conta in _linhas_mes(wb, mes_nome):
-            lanc = existentes.get((mes_num, linha, desc[:255]))
-            if lanc is None:
-                nao_achados += 1
-                continue
-            valor, banco = _valor_e_banco(wb, mes_nome, linha, col, bancos, resumo)
-            if (valor, banco.id if banco else None) == (lanc.valor, lanc.banco_id):
-                iguais += 1
-                continue
-            lanc.valor, lanc.banco = valor, banco
-            alterados.append(lanc)
-    motivo = f"Valores e bancos atualizados da planilha (valor da coluna {(coluna_valor or COLUNA_VALOR_PADRAO).upper()})"
+        valor, banco = it["valor"], it["banco"]
+        if (valor, banco.id if banco else None) == (lanc.valor, lanc.banco_id):
+            iguais += 1
+            continue
+        lanc.valor, lanc.banco = valor, banco
+        alterados.append(lanc)
+    motivo = ("Valores e bancos atualizados da planilha exportada" if fmt == "exportada" else
+              f"Valores e bancos atualizados da planilha (valor da coluna {(coluna_valor or COLUNA_VALOR_PADRAO).upper()})")
     if alterados:
         bulk_update_with_history(alterados, Lancamento, ["valor", "banco"], batch_size=500,
                                  default_user=usuario, default_change_reason=motivo)
@@ -302,83 +518,69 @@ def atualizar_valores(wb, ano, usuario=None, coluna_valor=COLUNA_VALOR_PADRAO):
 @transaction.atomic
 def importar(wb, ano, usuario=None, importar_regras=True, importar_lancamentos=True,
              substituir=True, coluna_valor=COLUNA_VALOR_PADRAO):
-    """Importa contas, regras e lançamentos. Retorna um dicionário com o resumo."""
-    if importar_regras and "Regras" not in wb.sheetnames:
-        raise ErroImportacao('A planilha não tem a aba "Regras".')
-    meses_presentes = [m for m in ABAS_MESES if m in wb.sheetnames]
-    if importar_lancamentos and not meses_presentes:
-        raise ErroImportacao("Não encontrei nenhuma aba de mês (Jan, Fev, …).")
+    """Importa regras, plano de contas e lançamentos de qualquer um dos dois formatos.
 
-    motivo = "Importação da planilha"
+    Na planilha exportada o ano vem do nome da aba ("Lançamentos 2026").
+    Retorna um dicionário com o resumo.
+    """
+    fmt = formato(wb)
+    if fmt == "exportada":
+        ano = ano_da_planilha(wb) or ano
+    motivo = "Importação da planilha exportada" if fmt == "exportada" else "Importação da planilha"
     # Junta contas duplicadas de importações anteriores antes de começar.
     resumo = {"contas": 0, "regras": 0, "lancamentos": 0, "automaticos": 0, "manuais": 0, "sem_regra": 0,
-              "com_valor": 0, "com_banco": 0, "contas_unificadas": unificar(Conta, Lancamento, Regra, usuario=usuario)}
+              "com_valor": 0, "com_banco": 0, "formato": fmt, "ano": ano,
+              "contas_unificadas": unificar(Conta, Lancamento, Regra, usuario=usuario)}
+    if fmt == "exportada":
+        _ler_bancos_e_plano(wb, resumo)
     # Só o plano de contas oficial (tabela da empresa) define códigos: um nome que não
     # casar com ele entra sem código e aparece em "Qualidade dos dados" para ser mesclado.
     conta_de = Resolvedor(Conta)
 
     if importar_regras:
-        ws = wb["Regras"]
-        for (nome,) in ws.iter_rows(min_row=5, min_col=8, max_col=8, values_only=True):
-            if _texto(nome):
-                conta_de(nome)
+        novas = _ler_regras(wb, conta_de)
         if substituir:
             for r in Regra.objects.all():
                 r._change_reason = motivo
                 r.delete()
-        novas = []
-        for n, (palavra, tipo, secao, conta, obs) in enumerate(
-            ws.iter_rows(min_row=5, min_col=1, max_col=5, values_only=True), start=5
-        ):
-            palavra = _texto(palavra)
-            if not palavra or not _texto(conta):
-                continue
-            novas.append(Regra(
-                palavra=palavra,
-                tipo=TIPOS.get(_texto(tipo).upper(), "C"),
-                secao=SECOES.get(_texto(secao).upper(), "A"),
-                conta=conta_de(conta),
-                ordem=n,
-                observacao=_texto(obs)[:200],
-            ))
         bulk_create_with_history(novas, Regra, default_user=usuario, default_change_reason=motivo)
         resumo["regras"] = len(novas)
 
     if importar_lancamentos:
-        col_valor = column_index_from_string(coluna_valor.upper()) if coluna_valor else None
+        if fmt == "exportada":
+            itens = list(_itens_exportada(wb, resumo))
+        else:
+            col_valor = column_index_from_string(coluna_valor.upper()) if coluna_valor else None
+            itens = list(_itens_modelo(wb, col_valor, resumo))
         if substituir:
             for lanc in Lancamento.objects.filter(ano=ano):
                 lanc._change_reason = motivo
                 lanc.delete()
         regras = regras_ativas()
-        bancos = _colunas_bancos()
         from .classificador import classificar
 
         novos = []
-        for mes_num, mes_nome in MESES:
-            if mes_nome not in wb.sheetnames:
-                continue
-            for linha, secao, desc, conta_planilha in _linhas_mes(wb, mes_nome):
-                valor, banco = _valor_e_banco(wb, mes_nome, linha, col_valor, bancos, resumo)
-                lanc = Lancamento(
-                    ano=ano, mes=mes_num, secao=secao, descricao=desc[:255], linha_planilha=linha,
-                    valor=valor, banco=banco,
-                )
-                regra = classificar(desc, secao, regras)
-                conta = conta_de(conta_planilha)
-                if conta and (not regra or regra.conta_id != conta.id):
-                    # Alguém digitou por cima na planilha: mantém como correção manual.
-                    lanc.conta = conta
-                    lanc.classificacao = Lancamento.Classificacao.MANUAL
-                    resumo["manuais"] += 1
-                elif regra:
-                    lanc.conta, lanc.regra = regra.conta, regra
-                    lanc.classificacao = Lancamento.Classificacao.AUTO
-                    resumo["automaticos"] += 1
-                else:
-                    lanc.classificacao = Lancamento.Classificacao.NENHUMA
-                    resumo["sem_regra"] += 1
-                novos.append(lanc)
+        for it in itens:
+            lanc = Lancamento(
+                ano=ano, mes=it["mes"], secao=it["secao"], descricao=it["descricao"][:255],
+                linha_planilha=it["linha_planilha"], valor=it["valor"], banco=it["banco"],
+            )
+            regra = classificar(it["descricao"], it["secao"], regras)
+            conta = conta_de(it["conta"])
+            manual = it["classificacao"] == "M" and conta is not None
+            if conta and (manual or not regra or regra.conta_id != conta.id):
+                # Escolhida à mão (na planilha ou no app, segundo a exportação): fica travada.
+                lanc.conta = conta
+                lanc.classificacao = Lancamento.Classificacao.MANUAL
+                resumo["manuais"] += 1
+            elif regra:
+                lanc.conta, lanc.regra = regra.conta, regra
+                lanc.classificacao = Lancamento.Classificacao.AUTO
+                resumo["automaticos"] += 1
+            else:
+                lanc.classificacao = Lancamento.Classificacao.NENHUMA
+                resumo["sem_regra"] += 1
+            novos.append(lanc)
         bulk_create_with_history(novos, Lancamento, batch_size=500, default_user=usuario,
                                  default_change_reason=motivo)
         resumo["lancamentos"] = len(novos)
@@ -396,8 +598,16 @@ def importar(wb, ano, usuario=None, importar_regras=True, importar_lancamentos=T
     return resumo
 
 
+# ---------------------------------------------------------------- exportação
+
 def exportar(ano):
-    """Gera um .xlsx com os lançamentos do ano, um resumo por conta e as regras."""
+    """Gera um .xlsx que pode ser importado de volta no app.
+
+    Abas: "Lançamentos <ano>" (com ID e linha da planilha original), "Regras",
+    "Bancos" e "Plano de contas".
+    """
+    from .models import Banco
+
     wb = openpyxl.Workbook()
     negrito = Font(bold=True, color="FFFFFF")
     fundo = PatternFill("solid", fgColor="1F4E78")
@@ -412,13 +622,14 @@ def exportar(ano):
 
     ws = wb.active
     ws.title = f"Lançamentos {ano}"
-    cabecalho(ws, ["Mês", "Seção", "Descrição", "Valor", "Banco", "Plano de Contas", "Classificação", "Regra"],
-              [7, 10, 45, 14, 18, 36, 14, 24])
+    cabecalho(ws, ["Mês", "Seção", "Descrição", "Valor", "Banco", "Plano de Contas", "Classificação", "Regra",
+                   "Linha na planilha", "ID"],
+              [7, 10, 45, 14, 18, 36, 14, 24, 10, 8])
     for l in Lancamento.objects.filter(ano=ano).select_related("conta", "regra", "banco"):
         ws.append([l.get_mes_display(), l.get_secao_display(), l.descricao,
                    float(l.valor) if l.valor is not None else None, l.banco.nome if l.banco else "",
                    l.conta.nome if l.conta else "", l.get_classificacao_display(),
-                   l.regra.palavra if l.regra else ""])
+                   l.regra.palavra if l.regra else "", l.linha_planilha, l.id])
         if not l.conta:
             for c in ws[ws.max_row]:
                 c.fill = amarelo
@@ -430,6 +641,18 @@ def exportar(ano):
     for r in Regra.objects.select_related("conta").order_by("ordem", "id"):
         ws.append([r.palavra, r.get_tipo_display(), r.get_secao_display(), r.conta.nome, r.observacao,
                    "Sim" if r.ativa else "Não"])
+
+    ws = wb.create_sheet("Bancos")
+    cabecalho(ws, ["Banco", "Coluna na planilha", "Instituição", "Agência", "Número da conta", "Titular",
+                   "Observação", "Ativo"], [20, 10, 16, 10, 18, 30, 30, 8])
+    for b in Banco.objects.order_by("coluna_planilha", "nome"):
+        ws.append([b.nome, b.coluna_planilha, b.banco, b.agencia, b.numero_conta, b.titular, b.observacao,
+                   "Sim" if b.ativo else "Não"])
+
+    ws = wb.create_sheet("Plano de contas")
+    cabecalho(ws, ["Código", "Plano de Contas", "Fora do DRE", "Ativa"], [8, 36, 12, 8])
+    for c in Conta.objects.all():
+        ws.append([c.codigo, c.nome, "Sim" if c.nao_entra_no_dre else "Não", "Sim" if c.ativa else "Não"])
 
     buf = io.BytesIO()
     wb.save(buf)

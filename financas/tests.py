@@ -1,4 +1,5 @@
 import io
+from decimal import Decimal
 
 import openpyxl
 from django.contrib.auth import get_user_model
@@ -131,7 +132,7 @@ class ImportacaoTests(TestCase):
     def test_exportar(self):
         self.importar()
         wb = openpyxl.load_workbook(planilha.exportar(2026))
-        self.assertEqual(wb.sheetnames, ["Lançamentos 2026", "Regras"])
+        self.assertEqual(wb.sheetnames, ["Lançamentos 2026", "Regras", "Bancos", "Plano de contas"])
         self.assertEqual(wb["Lançamentos 2026"].max_row, 9)
 
 
@@ -543,3 +544,93 @@ class FiltrosGuardadosTests(TestCase):
         c2 = self.client_class()
         c2.force_login(outro)
         self.assertEqual(c2.get(self.url).status_code, 200)
+
+
+class PlanilhaExportadaTests(TestCase):
+    """Exportar → importar de volta mantém lançamentos, valores, bancos, contas e regras."""
+
+    def setUp(self):
+        from .models import Banco
+        self.user = get_user_model().objects.create_user("exp", password="senha-forte-123")
+        planilha.importar(planilha.abrir_planilha(planilha_bancos(), ""), 2026, usuario=self.user)
+        # Ajustes feitos no app que precisam sobreviver à ida e volta:
+        l = Lancamento.objects.get(descricao="GERDAU")
+        l.conta, l.classificacao, l.regra = Conta.objects.get(codigo="3.7"), "M", None
+        l.save()
+        Banco.objects.filter(nome="ITAÚ").update(numero_conta="12345-6", agencia="0001")
+        Regra.objects.create(palavra="CAIXA", tipo="C", secao="D", conta=Conta.objects.get(codigo="5.30"),
+                             ordem=99, ativa=False)
+
+    def snapshot(self):
+        return sorted((l.mes, l.secao, l.descricao, l.valor, l.banco.nome if l.banco else None,
+                       l.conta.nome if l.conta else None, l.classificacao, l.linha_planilha)
+                      for l in Lancamento.objects.filter(ano=2026).select_related("banco", "conta"))
+
+    def test_ida_e_volta(self):
+        antes = self.snapshot()
+        regras_antes = sorted(Regra.objects.values_list("palavra", "tipo", "secao", "conta__nome", "ativa"))
+        arquivo = planilha.exportar(2026)
+        Lancamento.objects.all().delete()
+        wb = planilha.abrir_planilha(arquivo, "")
+        self.assertEqual(planilha.formato(wb), "exportada")
+        r = planilha.importar(wb, 1999, usuario=self.user)   # ano vem do nome da aba
+        self.assertEqual(r["ano"], 2026)
+        self.assertEqual(r["lancamentos"], 6)
+        self.assertEqual(self.snapshot(), antes)
+        self.assertEqual(sorted(Regra.objects.values_list("palavra", "tipo", "secao", "conta__nome", "ativa")),
+                         regras_antes)
+        from .models import Banco
+        self.assertEqual(Banco.objects.get(nome="ITAÚ").numero_conta, "12345-6")
+        self.assertEqual(Lancamento.objects.get(descricao="GERDAU").classificacao, "M")
+        h = Lancamento.objects.get(descricao="GERDAU").history.first()
+        self.assertEqual((h.history_user, h.history_change_reason), (self.user, "Importação da planilha exportada"))
+
+    def test_exportacao_antiga_sem_id_e_bancos(self):
+        """Arquivo exportado pela versão anterior (só Lançamentos e Regras, sem ID)."""
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Lançamentos 2026"
+        ws.append(["Mês", "Seção", "Descrição", "Valor", "Banco", "Plano de Contas", "Classificação", "Regra"])
+        ws.append(["Set", "Despesa", "AÇO GERDAU", 1000.5, "BRADESCO", "-> Compras de Aço", "Automática", "GERDAU"])
+        ws.append(["Set", "Receita", "PIX X", 300, "", "-> Rec PIX", "Manual", ""])
+        ws.append(["Set", "Despesa", "NOVO", None, "BANCO NOVO", "", "Sem regra", ""])
+        r2 = wb.create_sheet("Regras")
+        r2.append(["Palavra-chave", "Tipo de busca", "Seção", "Plano de Contas", "Observação", "Ativa"])
+        r2.append(["GERDAU", "Contém", "Despesa", "-> Compras de Aço", "", "Sim"])
+        buf = io.BytesIO(); wb.save(buf); buf.seek(0)
+        r = planilha.importar(planilha.abrir_planilha(buf, ""), 2026, usuario=self.user)
+        self.assertEqual((r["lancamentos"], r["regras"], r["com_valor"], r["com_banco"]), (3, 1, 2, 2))
+        aco = Lancamento.objects.get(descricao="AÇO GERDAU")
+        self.assertEqual((aco.valor, aco.banco.nome, aco.conta.codigo, aco.classificacao),
+                         (Decimal("1000.50"), "BRADESCO", "3.1", "A"))
+        self.assertEqual(Lancamento.objects.get(descricao="NOVO").banco.nome, "BANCO NOVO")
+        self.assertEqual(Lancamento.objects.get(descricao="PIX X").classificacao, "M")
+
+    def test_so_atualizar_valores_pela_exportada(self):
+        arquivo = planilha.exportar(2026)
+        wb = openpyxl.load_workbook(arquivo)
+        ws = wb["Lançamentos 2026"]
+        for linha in range(2, ws.max_row + 1):
+            if ws.cell(linha, 3).value == "GERDAU":
+                ws.cell(linha, 4).value = 999
+                ws.cell(linha, 5).value = "ITAÚ"
+        buf = io.BytesIO(); wb.save(buf); buf.seek(0)
+        r = planilha.atualizar_valores(planilha.abrir_planilha(buf, ""), 2026, usuario=self.user)
+        self.assertEqual((r["valores_atualizados"], r["nao_encontrados"]), (1, 0))
+        l = Lancamento.objects.get(descricao="GERDAU")
+        self.assertEqual((l.valor, l.banco.nome, l.conta.codigo), (999, "ITAÚ", "3.7"))
+
+    def test_pela_tela(self):
+        self.client.force_login(self.user)
+        arq = planilha.exportar(2026)
+        arq.name = "Gestao_Financeira_2026_export.xlsx"
+        resp = self.client.post(reverse("importar"), {"arquivo": arq, "ano": 2025, "modo": "completa",
+                                                      "importar_regras": "on", "coluna_valor": "D"})
+        self.assertContains(resp, "planilha exportada pelo app")
+        self.assertContains(resp, "Lançamentos importados: <b>6</b>")
+        self.assertFalse(Lancamento.objects.filter(ano=2025).exists())
+
+    def test_planilha_desconhecida(self):
+        wb = openpyxl.Workbook(); buf = io.BytesIO(); wb.save(buf); buf.seek(0)
+        with self.assertRaises(planilha.ErroImportacao):
+            planilha.importar(planilha.abrir_planilha(buf, ""), 2026)

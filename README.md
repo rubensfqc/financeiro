@@ -50,7 +50,12 @@ python manage.py runserver
 
 Abra http://127.0.0.1:8000, entre e vá em **Importar**.
 
-### Importar a planilha atual
+### Importar a planilha atual (ou uma exportada pelo app)
+
+A importação reconhece sozinha dois formatos:
+
+- **Planilha modelo** (Gestão Financeira, abas Jan…Dez), descrita abaixo.
+- **Planilha exportada pelo app** (botão *Exportar .xlsx* em Lançamentos): abas “Lançamentos <ano>”, “Regras”, “Bancos” e “Plano de contas”. O ano vem do nome da aba. Lançamentos travados (“Manual”), valores, bancos (com agência e número da conta), regras e códigos das contas voltam como estavam. Dá para editar o arquivo no Excel antes de importar. Exportações feitas por versões anteriores (sem as abas Bancos/Plano de contas e sem a coluna ID) também são aceitas. Com “Só atualizar valor e banco”, o casamento é feito pela coluna ID.
 
 Pela tela **Importar** (envia o arquivo, a senha e o ano) ou pela linha de comando:
 
@@ -72,7 +77,7 @@ O que é lido:
 - **Correções manuais**: quando a conta da coluna C é diferente do que as regras dariam (alguém digitou por cima), o lançamento entra como **Manual**.
 - **Reimportar**: importar de novo o mesmo ano substitui os lançamentos desse ano e as regras. O que foi apagado continua no histórico.
 
-Outros comandos: `python manage.py reclassificar`, `python manage.py carregar_plano_contas` e `python manage.py test financas` (35 testes).
+Outros comandos: `python manage.py reclassificar`, `python manage.py carregar_plano_contas` e `python manage.py test financas` (40 testes).
 
 ## Publicar no PythonAnywhere
 

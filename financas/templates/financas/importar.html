@@ -2,7 +2,8 @@
 {% block titulo %}Importar planilha{% endblock %}
 {% block conteudo %}
 <div class="cabecalho"><div><h1>Importar planilha</h1>
-  <span class="muted">Lê a aba <b>Regras</b> e as abas de mês <b>Jan…Dez</b>: descrição (coluna B), plano de contas (C), valor (D) e o banco pelas colunas definidas em <a href="{% url 'bancos' %}">Bancos</a> (E a K).</span></div></div>
+  <span class="muted">Lê a aba <b>Regras</b> e as abas de mês <b>Jan…Dez</b>: descrição (coluna B), plano de contas (C), valor (D) e o banco pelas colunas definidas em <a href="{% url 'bancos' %}">Bancos</a> (E a K).
+  Também aceita a planilha gerada pelo botão <b>Exportar</b> de Lançamentos (o ano vem do nome da aba).</span></div></div>
 <div class="duas-colunas">
   <form method="post" enctype="multipart/form-data" class="formulario cartao">{% csrf_token %}
     {% if form.non_field_errors %}<div class="erros">{{ form.non_field_errors|join:" " }}</div>{% endif %}
@@ -13,6 +14,7 @@
   {% if resultado %}
   <div class="cartao">
     <h2 style="margin-top:0">Resultado</h2>
+    <p class="small muted" style="margin-top:0">{% if resultado.formato == "exportada" %}Formato: planilha exportada pelo app — ano {{ resultado.ano }} lido da aba de lançamentos{% if resultado.ano != resultado.ano_informado %} (o ano {{ resultado.ano_informado }} informado foi ignorado){% endif %}.{% else %}Formato: planilha modelo (abas de mês) — ano {{ resultado.ano }}.{% endif %}</p>
     {% if resultado.modo == "valores" %}
     <ul>
       <li>Lançamentos com valor ou banco preenchido/alterado: <b>{{ resultado.valores_atualizados }}</b></li>
@@ -36,6 +38,8 @@
     </ul>
     {% if resultado.valor_pela_coluna_do_banco %}<p class="small muted">{{ resultado.valor_pela_coluna_do_banco }} lançamento(s) estavam com a coluna D vazia; o valor veio da coluna do banco.</p>{% endif %}
     {% if resultado.varios_bancos %}<p class="ruim">▲ {{ resultado.varios_bancos|length }} linha(s) com valor em mais de um banco (ficou o primeiro): {{ resultado.varios_bancos|slice:":10"|join:", " }}{% if resultado.varios_bancos|length > 10 %}…{% endif %}</p>{% endif %}
+    {% if resultado.linhas_ignoradas %}<p class="ruim">▲ Linhas ignoradas por mês inválido: {{ resultado.linhas_ignoradas|slice:":10"|join:", " }}</p>{% endif %}
+    {% if resultado.bancos_novos %}<p class="small muted">Bancos novos criados a partir da planilha: {{ resultado.bancos_novos }}.</p>{% endif %}
     {% if resultado.lancamentos and not resultado.com_valor %}<p class="ruim">▲ Nenhum valor foi lido. Confira a letra da coluna do valor.</p>{% endif %}
     {% if resultado.contas_sem_codigo %}
     <p class="ruim">▲ {{ resultado.contas_sem_codigo|length }} nome(s) da coluna “Plano de Contas” não existem no plano de contas e ficam fora do dashboard:

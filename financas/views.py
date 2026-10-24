@@ -421,7 +421,8 @@ def importar(request):
                     importar_lancamentos=True, coluna_valor=d["coluna_valor"],
                 )
             resultado["modo"] = d["modo"]
-            resultado["ano"] = d["ano"]
+            resultado.setdefault("ano", d["ano"])
+            resultado["ano_informado"] = d["ano"]
             messages.success(request, "Importação concluída.")
         except planilha.ErroImportacao as exc:
             form.add_error(None, str(exc))
