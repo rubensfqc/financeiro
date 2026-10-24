@@ -1,7 +1,7 @@
 from django import forms
 from django.utils import timezone
 
-from .models import MESES, Conta, Lancamento, Regra
+from .models import MESES, Banco, Conta, Lancamento, Regra
 
 
 class LancamentoForm(forms.ModelForm):
@@ -14,11 +14,13 @@ class LancamentoForm(forms.ModelForm):
 
     class Meta:
         model = Lancamento
-        fields = ["ano", "mes", "secao", "descricao", "valor", "conta"]
+        fields = ["ano", "mes", "secao", "descricao", "valor", "banco", "conta"]
         widgets = {"descricao": forms.TextInput(attrs={"autofocus": True, "autocomplete": "off"})}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["banco"].queryset = Banco.objects.filter(ativo=True)
+        self.fields["banco"].empty_label = "— sem banco —"
         if not self.instance.pk:
             hoje = timezone.localdate()
             self.fields["ano"].initial = hoje.year
@@ -37,6 +39,20 @@ class LancamentoForm(forms.ModelForm):
         if commit:
             lanc.save()
         return lanc
+
+
+class BancoForm(forms.ModelForm):
+    class Meta:
+        model = Banco
+        fields = ["nome", "coluna_planilha", "banco", "agencia", "numero_conta", "titular", "observacao", "ativo"]
+
+    def clean_coluna_planilha(self):
+        v = self.cleaned_data["coluna_planilha"].strip().upper()
+        if v and not v.isalpha():
+            raise forms.ValidationError("Use só a letra da coluna, ex.: E.")
+        if v and Banco.objects.filter(coluna_planilha=v).exclude(pk=self.instance.pk).exists():
+            raise forms.ValidationError("Outro banco já usa esta coluna.")
+        return v
 
 
 class RegraForm(forms.ModelForm):
@@ -85,8 +101,8 @@ class ImportarForm(forms.Form):
     MODOS = [
         ("completa", "Importação completa: regras, plano de contas, lançamentos e valores "
                      "(substitui os lançamentos do ano)"),
-        ("valores", "Só atualizar os valores dos lançamentos já importados "
-                    "(mantém contas e correções feitas no app)"),
+        ("valores", "Só atualizar valor e banco dos lançamentos já importados "
+                    "(mantém plano de contas e correções feitas no app)"),
     ]
     arquivo = forms.FileField(label="Planilha (.xlsx)")
     senha = forms.CharField(label="Senha da planilha", required=False, widget=forms.PasswordInput(render_value=False))

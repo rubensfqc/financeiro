@@ -34,6 +34,35 @@ class Conta(models.Model):
         return self.nome
 
 
+class Banco(models.Model):
+    """Banco/caixa onde o lançamento ocorreu.
+
+    `coluna_planilha` é a coluna das abas de mês que indica o banco: na importação,
+    se essa coluna tiver valor diferente de zero, o lançamento fica com este banco.
+    """
+
+    nome = models.CharField(max_length=60, unique=True)
+    coluna_planilha = models.CharField(
+        "coluna na planilha", max_length=3, blank=True,
+        help_text="Letra da coluna das abas de mês com os valores deste banco (ex.: E). Em branco = não importa.",
+    )
+    banco = models.CharField("instituição", max_length=60, blank=True, help_text="Ex.: Sicoob, Itaú, Bradesco.")
+    agencia = models.CharField("agência", max_length=20, blank=True)
+    numero_conta = models.CharField("número da conta", max_length=30, blank=True)
+    titular = models.CharField(max_length=120, blank=True, help_text="Empresa ou pessoa titular da conta.")
+    observacao = models.CharField("observação", max_length=200, blank=True)
+    ativo = models.BooleanField(default=True)
+
+    history = HistoricalRecords()
+
+    class Meta:
+        ordering = ["coluna_planilha", "nome"]
+        verbose_name = "banco"
+
+    def __str__(self):
+        return self.nome
+
+
 class Regra(models.Model):
     """Palavra-chave que leva uma descrição a uma conta.
 
@@ -84,6 +113,7 @@ class Lancamento(models.Model):
     valor = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     conta = models.ForeignKey(Conta, on_delete=models.PROTECT, null=True, blank=True, related_name="lancamentos",
                               verbose_name="plano de contas")
+    banco = models.ForeignKey(Banco, on_delete=models.PROTECT, null=True, blank=True, related_name="lancamentos")
     classificacao = models.CharField(
         "classificação", max_length=1, choices=Classificacao.choices, default=Classificacao.NENHUMA,
     )

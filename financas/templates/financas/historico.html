@@ -10,7 +10,8 @@
     <option value="">Todos</option>
     <option value="lancamento" {% if f.modelo == 'lancamento' %}selected{% endif %}>Lançamentos</option>
     <option value="regra" {% if f.modelo == 'regra' %}selected{% endif %}>Regras</option>
-    <option value="conta" {% if f.modelo == 'conta' %}selected{% endif %}>Contas</option>
+    <option value="conta" {% if f.modelo == 'conta' %}selected{% endif %}>Plano de contas</option>
+    <option value="banco" {% if f.modelo == 'banco' %}selected{% endif %}>Bancos</option>
   </select></label>
   <label>Ação <select name="tipo"><option value="">Todas</option>{% for k, v in tipos.items %}<option value="{{ k }}" {% if f.tipo == k %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></label>
   <label>Usuário <select name="usuario"><option value="">Todos</option>{% for u in usuarios %}<option value="{{ u.pk }}" {% if u.pk|stringformat:"s" == f.usuario %}selected{% endif %}>{{ u.username }}</option>{% endfor %}</select></label>
@@ -28,10 +29,11 @@
     <td class="small" style="white-space:nowrap">{{ h.history_date|date:"d/m/Y H:i:s" }}</td>
     <td>{{ h.history_user|default:"—" }}</td>
     <td>
-      <span class="muted small">{% if h.modelo == 'lancamento' %}Lançamento{% elif h.modelo == 'regra' %}Regra{% else %}Conta{% endif %}</span><br>
+      <span class="muted small">{% if h.modelo == 'lancamento' %}Lançamento{% elif h.modelo == 'regra' %}Regra{% elif h.modelo == 'banco' %}Banco{% else %}Plano de contas{% endif %}</span><br>
       {% if h.history_type != '-' %}
         {% if h.modelo == 'lancamento' %}<a href="{% url 'lancamento_editar' h.id %}">{{ h.descricao }}</a> <span class="muted small">{{ h.get_mes_display }}/{{ h.ano }}</span>
         {% elif h.modelo == 'regra' %}<a href="{% url 'regra_editar' h.id %}">{{ h.palavra }}</a>
+        {% elif h.modelo == 'banco' %}<a href="{% url 'banco_editar' h.id %}">{{ h.nome }}</a>
         {% else %}<a href="{% url 'conta_editar' h.id %}">{{ h.nome }}</a>{% endif %}
       {% else %}{% if h.modelo == 'lancamento' %}{{ h.descricao }} <span class="muted small">{{ h.get_mes_display }}/{{ h.ano }}</span>{% elif h.modelo == 'regra' %}{{ h.palavra }}{% else %}{{ h.nome }}{% endif %}{% endif %}
     </td>

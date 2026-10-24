@@ -1,0 +1,31 @@
+{% extends "financas/base.html" %}
+{% load financas_extras %}
+{% block titulo %}Bancos{% endblock %}
+{% block conteudo %}
+<div class="cabecalho">
+  <div><h1>Bancos</h1>
+    <span class="muted">Na importação, o lançamento fica com o banco cuja coluna da planilha tem valor diferente de zero. Coluna vazia = lançamento sem banco.</span></div>
+  <div class="acoes">
+    <form method="get"><select name="ano" onchange="this.form.submit()" aria-label="Ano">{% for a in anos %}<option {% if a == ano %}selected{% endif %}>{{ a }}</option>{% endfor %}</select></form>
+    <a class="btn prim" href="{% url 'banco_novo' %}">+ Novo banco</a>
+  </div>
+</div>
+<div class="tabela-wrap"><table>
+  <thead><tr><th>Coluna</th><th>Banco</th><th>Instituição</th><th>Agência</th><th>Nº da conta</th><th class="num">Lançamentos {{ ano }}</th><th class="num">Receitas</th><th class="num">Despesas</th><th></th></tr></thead>
+  <tbody>{% for b in bancos %}
+  <tr {% if not b.ativo %}class="muted"{% endif %}>
+    <td>{{ b.coluna_planilha|default:"—" }}</td>
+    <td><b>{{ b.nome }}</b>{% if not b.ativo %} <span class="etiqueta x">inativo</span>{% endif %}{% if b.titular %}<br><span class="small muted">{{ b.titular }}</span>{% endif %}</td>
+    <td>{{ b.banco }}</td>
+    <td>{{ b.agencia }}</td>
+    <td>{{ b.numero_conta }}</td>
+    <td class="num"><a href="{% url 'lancamentos' %}?ano={{ ano }}&banco={{ b.pk }}">{{ b.n }}</a></td>
+    <td class="num">{{ b.receitas|brl:2 }}</td>
+    <td class="num">{{ b.despesas|brl:2 }}</td>
+    <td><a href="{% url 'banco_editar' b.pk %}">editar</a></td>
+  </tr>
+  {% endfor %}
+  <tr><td>—</td><td class="muted">Sem banco</td><td></td><td></td><td></td><td class="num"><a href="{% url 'lancamentos' %}?ano={{ ano }}&banco=nenhum">{{ sem_banco }}</a></td><td></td><td></td><td></td></tr>
+  </tbody>
+</table></div>
+{% endblock %}

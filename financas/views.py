@@ -13,8 +13,8 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from .classificador import classificar, normalizar, reclassificar, regra_serve, regras_ativas
-from .forms import MESES_FILTRO, ContaForm, ImportarForm, LancamentoForm, RegraForm
-from .models import MESES, Conta, Lancamento, Regra, Secao
+from .forms import MESES_FILTRO, BancoForm, ContaForm, ImportarForm, LancamentoForm, RegraForm
+from .models import MESES, Banco, Conta, Lancamento, Regra, Secao
 from . import planilha
 
 
@@ -35,13 +35,17 @@ def _ano_padrao():
 def lancamentos(request):
     g = request.GET
     ano = int(g.get("ano") or _ano_padrao())
-    qs = Lancamento.objects.filter(ano=ano).select_related("conta", "regra")
+    qs = Lancamento.objects.filter(ano=ano).select_related("conta", "regra", "banco")
     if g.get("mes"):
         qs = qs.filter(mes=g["mes"])
     if g.get("secao"):
         qs = qs.filter(secao=g["secao"])
     if g.get("conta"):
         qs = qs.filter(conta_id=g["conta"])
+    if g.get("banco") == "nenhum":
+        qs = qs.filter(banco__isnull=True)
+    elif g.get("banco"):
+        qs = qs.filter(banco_id=g["banco"])
     if g.get("classificacao"):
         qs = qs.filter(classificacao=g["classificacao"])
     if g.get("q"):
@@ -49,7 +53,9 @@ def lancamentos(request):
 
     totais = qs.aggregate(
         n=Count("id"), sem=Count("id", filter=Q(classificacao="N")),
-        manuais=Count("id", filter=Q(classificacao="M")), soma=Sum("valor"),
+        manuais=Count("id", filter=Q(classificacao="M")),
+        receitas=Sum("valor", filter=Q(secao="R")), despesas=Sum("valor", filter=Q(secao="D")),
+        sem_valor=Count("id", filter=Q(valor__isnull=True)),
     )
     pagina = Paginator(qs, 100).get_page(g.get("page"))
     params = g.copy()
@@ -58,7 +64,8 @@ def lancamentos(request):
         "pagina": pagina, "totais": totais, "ano": ano, "anos": _anos(),
         "meses": MESES_FILTRO, "secoes": Secao.choices,
         "classificacoes": Lancamento.Classificacao.choices,
-        "contas": Conta.objects.filter(ativa=True), "f": g, "querystring": params.urlencode(),
+        "contas": Conta.objects.filter(ativa=True), "bancos": Banco.objects.all(),
+        "f": g, "querystring": params.urlencode(),
     })
 
 
@@ -231,6 +238,32 @@ def unificar_contas(request):
     return redirect("contas")
 
 
+# ---------------------------------------------------------------- bancos
+
+def bancos(request):
+    ano = int(request.GET.get("ano") or _ano_padrao())
+    lista = list(Banco.objects.annotate(
+        n=Count("lancamentos", filter=Q(lancamentos__ano=ano)),
+        receitas=Sum("lancamentos__valor", filter=Q(lancamentos__ano=ano, lancamentos__secao="R")),
+        despesas=Sum("lancamentos__valor", filter=Q(lancamentos__ano=ano, lancamentos__secao="D")),
+    ).order_by("coluna_planilha", "nome"))
+    sem_banco = Lancamento.objects.filter(ano=ano, banco__isnull=True).count()
+    return render(request, "financas/bancos.html", {"bancos": lista, "ano": ano, "anos": _anos(),
+                                                    "sem_banco": sem_banco})
+
+
+def banco_form(request, pk=None):
+    banco = get_object_or_404(Banco, pk=pk) if pk else None
+    form = BancoForm(request.POST or None, instance=banco)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, "Banco salvo.")
+        return redirect("bancos")
+    historico = banco.history.select_related("history_user")[:30] if banco else []
+    return render(request, "financas/banco_form.html", {"form": form, "banco": banco,
+                                                        "historico": _com_diferencas(historico)})
+
+
 # ---------------------------------------------------------------- resumo
 
 def resumo(request):
@@ -284,7 +317,7 @@ def dashboard(request):
 
 # ---------------------------------------------------------------- histórico
 
-MODELOS = {"lancamento": Lancamento, "regra": Regra, "conta": Conta}
+MODELOS = {"lancamento": Lancamento, "regra": Regra, "conta": Conta, "banco": Banco}
 TIPO_ALTERACAO = {"+": "Criação", "~": "Alteração", "-": "Exclusão"}
 
 
@@ -292,6 +325,7 @@ def _nomes_fk():
     return {
         "conta": dict(Conta.objects.values_list("id", "nome")),
         "regra": dict(Regra.objects.values_list("id", "palavra")),
+        "banco": dict(Banco.objects.values_list("id", "nome")),
     }
 
 
@@ -337,7 +371,7 @@ def historico(request):
             qs = qs.filter(history_date__lte=timezone.make_aware(datetime.combine(
                 datetime.fromisoformat(g["ate"]).date(), time.max)))
         if g.get("q"):
-            campo = {"lancamento": "descricao", "regra": "palavra", "conta": "nome"}[nome]
+            campo = {"lancamento": "descricao", "regra": "palavra", "conta": "nome", "banco": "nome"}[nome]
             qs = qs.filter(Q(**{f"{campo}__icontains": g["q"]}) | Q(history_change_reason__icontains=g["q"]))
         for r in qs.order_by("-history_date")[:3000]:
             r.modelo = nome

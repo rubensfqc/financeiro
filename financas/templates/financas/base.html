@@ -19,6 +19,7 @@
       <a href="{% url 'resumo' %}" class="{% if u == 'resumo' %}ativo{% endif %}">Resumo</a>
       <a href="{% url 'regras' %}" class="{% if 'regra' in u %}ativo{% endif %}">Regras</a>
       <a href="{% url 'contas' %}" class="{% if 'conta' in u %}ativo{% endif %}">Plano de contas</a>
+      <a href="{% url 'bancos' %}" class="{% if 'banco' in u %}ativo{% endif %}">Bancos</a>
       <a href="{% url 'historico' %}" class="{% if u == 'historico' %}ativo{% endif %}">Histórico</a>
       <a href="{% url 'importar' %}" class="{% if u == 'importar' %}ativo{% endif %}">Importar</a>
       {% if user.is_staff %}<a href="{% url 'admin:index' %}">Usuários</a>{% endif %}

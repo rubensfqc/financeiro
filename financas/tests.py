@@ -413,3 +413,96 @@ class ChaveContaTests(TestCase):
                   "→ Compras de Aço", "-> Compras\xa0de Aço"]
         self.assertEqual({chave(n) for n in iguais}, {"compras de aco"})
         self.assertEqual(chave("-> Encargos 13o Salário"), "encargos 13o salario")
+
+
+def planilha_bancos():
+    """D = fórmula de soma das colunas dos bancos (sem valor calculado salvo), bancos em E…K."""
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    r = wb.create_sheet("Regras")
+    for _ in range(3):
+        r.append([])
+    r.append(["Palavra-chave", "Tipo de busca", "Seção", "Plano de Contas"])
+    r.append(["GERDAU", "Contém", "Despesa", "-> Compras de Aço"])
+    ago = wb.create_sheet("Ago")
+    ago.append([]); ago.append([])
+    ago.append([None, "Descrição", "Plano de Contas", "Valor", "SICOOB LM", "SICOOB RM", "ITAÚ", "BRADESCO",
+                "SICOOB RF", "LM SIST CX ECON", "RM"])
+    ago.append([None, "PIX CLIENTE", "-> Rec PIX", "=SUM(E4:K4)", 1500, 0])           # linha 4: Sicoob LM
+    ago.append([None, "DESPESAS"])
+    ago.append([None, "GERDAU", "-> Compras de Aço", "=SUM(E6:K6)", None, None, None, 800])  # Bradesco
+    ago.append([None, "CAIXA", "-> Outras Despesas Fixas", "=J7+K7", None, None, None, None, None, 0, 120])  # RM
+    ago.append([None, "SEM BANCO", "-> Outras Despesas Fixas", 50])                     # nenhuma coluna
+    ago.append([None, "SO NO BANCO", "-> Outras Despesas Fixas", None, None, None, 77])  # D vazia, Itaú
+    ago.append([None, "DOIS BANCOS", "-> Outras Despesas Fixas", "=SOMA(E10:K10)", 10, None, None, None, 5])
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
+
+
+class BancosTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user("rb", password="senha-forte-123")
+
+    def test_bancos_iniciais(self):
+        from .models import Banco
+        self.assertEqual(list(Banco.objects.order_by("coluna_planilha").values_list("coluna_planilha", "nome")), [
+            ("E", "SICOOB LM"), ("F", "SICOOB RM"), ("G", "ITAÚ"), ("H", "BRADESCO"),
+            ("I", "SICOOB RF"), ("J", "LM SIST CX ECON"), ("K", "RM")])
+
+    def test_importa_valor_d_e_banco(self):
+        r = planilha.importar(planilha.abrir_planilha(planilha_bancos(), ""), 2026, usuario=self.user)
+        get = lambda d: Lancamento.objects.select_related("banco").get(descricao=d)
+        self.assertEqual((get("PIX CLIENTE").valor, get("PIX CLIENTE").banco.nome), (1500, "SICOOB LM"))
+        self.assertEqual((get("GERDAU").valor, get("GERDAU").banco.nome), (800, "BRADESCO"))
+        self.assertEqual((get("CAIXA").valor, get("CAIXA").banco.nome), (120, "RM"))   # J=0 não conta
+        self.assertEqual((get("SEM BANCO").valor, get("SEM BANCO").banco), (50, None))
+        self.assertEqual((get("SO NO BANCO").valor, get("SO NO BANCO").banco.nome), (77, "ITAÚ"))
+        self.assertEqual((get("DOIS BANCOS").valor, get("DOIS BANCOS").banco.nome), (15, "SICOOB LM"))
+        self.assertEqual(r["com_valor"], 6)
+        self.assertEqual(r["com_banco"], 5)
+        self.assertEqual(r["varios_bancos"], ["Ago linha 10"])
+        self.assertEqual(r["valor_pela_coluna_do_banco"], 1)
+
+    def test_atualizar_valores_e_bancos(self):
+        wb = planilha.abrir_planilha(planilha_bancos(), "")
+        planilha.importar(wb, 2026, usuario=self.user)
+        Lancamento.objects.update(valor=None, banco=None)
+        r = planilha.atualizar_valores(planilha.abrir_planilha(planilha_bancos(), ""), 2026, usuario=self.user)
+        self.assertEqual(r["valores_atualizados"], 6)
+        self.assertEqual(Lancamento.objects.get(descricao="GERDAU").banco.nome, "BRADESCO")
+
+    def test_coluna_editavel_e_banco_novo(self):
+        from .models import Banco
+        self.client.force_login(self.user)
+        novo = self.client.post(reverse("banco_novo"), {"nome": "CAIXA ECON", "coluna_planilha": "l",
+                                                        "agencia": "0123", "numero_conta": "456-7", "ativo": "on"})
+        self.assertEqual(novo.status_code, 302)
+        b = Banco.objects.get(nome="CAIXA ECON")
+        self.assertEqual((b.coluna_planilha, b.numero_conta), ("L", "456-7"))
+        itau = Banco.objects.get(nome="ITAÚ")
+        resp = self.client.post(reverse("banco_editar", args=[itau.pk]), {
+            "nome": "ITAÚ", "coluna_planilha": "G", "numero_conta": "99999-9", "ativo": "on"})
+        self.assertEqual(resp.status_code, 302)
+        itau.refresh_from_db()
+        self.assertEqual(itau.numero_conta, "99999-9")
+        self.assertEqual(itau.history.first().history_user, self.user)
+        dup = self.client.post(reverse("banco_novo"), {"nome": "X", "coluna_planilha": "E", "ativo": "on"})
+        self.assertContains(dup, "Outro banco já usa esta coluna")
+
+    def test_telas_mostram_valor_e_banco(self):
+        planilha.importar(planilha.abrir_planilha(planilha_bancos(), ""), 2026, usuario=self.user)
+        self.client.force_login(self.user)
+        r = self.client.get(reverse("lancamentos") + "?ano=2026")
+        self.assertContains(r, "R$ 1.500,00")
+        self.assertContains(r, "BRADESCO")
+        from .models import Banco
+        r = self.client.get(reverse("lancamentos") + f"?ano=2026&banco={Banco.objects.get(nome='RM').pk}")
+        self.assertContains(r, "CAIXA")
+        self.assertNotContains(r, "GERDAU")
+        self.assertContains(self.client.get(reverse("lancamentos") + "?ano=2026&banco=nenhum"), "SEM BANCO")
+        self.assertContains(self.client.get(reverse("bancos") + "?ano=2026"), "SICOOB LM")
+        self.assertEqual(self.client.get(reverse("historico") + "?modelo=banco").status_code, 200)
+        wbx = openpyxl.load_workbook(planilha.exportar(2026))
+        self.assertEqual(wbx.active["E1"].value, "Banco")

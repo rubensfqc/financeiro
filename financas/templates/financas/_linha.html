@@ -1,8 +1,9 @@
-{% load humanize %}<tr id="l{{ l.pk }}" class="{% if l.classificacao == 'N' %}sem-regra{% endif %}">
+{% load humanize financas_extras %}<tr id="l{{ l.pk }}" class="{% if l.classificacao == 'N' %}sem-regra{% endif %}">
   <td>{{ l.get_mes_display }}</td>
   <td>{{ l.get_secao_display }}</td>
   <td>{{ l.descricao }}</td>
-  <td class="num">{% if l.valor is not None %}{{ l.valor|floatformat:2|intcomma }}{% endif %}</td>
+  <td class="num">{% if l.valor is not None %}{{ l.valor|brl:2 }}{% else %}<span class="muted">—</span>{% endif %}</td>
+  <td>{% if l.banco %}{{ l.banco }}{% else %}<span class="muted">—</span>{% endif %}</td>
   <td>
     <select name="conta" hx-post="{% url 'lancamento_conta' l.pk %}" hx-target="#l{{ l.pk }}" hx-swap="outerHTML" hx-indicator="#l{{ l.pk }}">
       {% if not l.conta %}<option value="" selected disabled>— escolher conta —</option>{% endif %}

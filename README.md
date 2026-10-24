@@ -7,6 +7,7 @@ Webapp Django que faz o mesmo que a planilha *Gestão Financeira*: cada lançame
 - **Login obrigatório** em todas as telas, troca de senha, sessão de 8 h. Usuários são criados no admin (`/admin/`, menu *Usuários* para quem é staff).
 - **Lançamentos**: filtro por ano, mês, seção, conta, classificação e texto. A conta pode ser trocada direto na tabela; a escolha manual fica travada e as regras não mexem mais nela (dá para voltar para automática). Linhas sem regra ficam em amarelo, com atalho “+ regra”.
 - **Regras**: mesma lógica da aba Regras da planilha (veja abaixo), com um testador (“qual regra pega esta descrição?”), contagem de uso e lista das descrições sem regra mais frequentes. Salvar, editar ou excluir uma regra reclassifica na hora todos os lançamentos automáticos.
+- **Bancos**: cadastro de bancos/caixas (nome, coluna da planilha, instituição, agência, número da conta, titular), com totais do ano e histórico. Cada lançamento mostra o banco.
 - **Contas**: plano de contas com código, marcação “fora do DRE” (transferências entre contas) e ativa/inativa.
 - **Dashboard**: visão consolidada por trimestre (T1–T4) ou ano — veja a seção abaixo.
 - **Resumo**: totais por conta e por mês (ou quantidades, se os valores não forem importados).
@@ -65,11 +66,13 @@ O que é lido:
 - **Abas Jan…Dez**: descrição na coluna B e conta na coluna C, a partir da linha 4. Receitas ficam acima da linha “DESPESAS” e despesas abaixo dela.
 - **Valores**: coluna D por padrão (dá para trocar a letra na tela). Aceita número, texto como “R$ 1.500,00” e fórmulas simples como `=600+150`, mesmo quando o arquivo não guardou o resultado calculado.
 - **Plano de contas = coluna C**: o nome da coluna C é casado com o plano de contas da empresa ignorando seta (`->`), código na frente, espaços, maiúsculas e acentos. “->Compras de Aço”, “compras de aco” e “3.1 -> Compras de Aço” viram a mesma conta 3.1. Nomes que não existem no plano entram sem código, ficam fora do dashboard e aparecem num aviso em **Plano de contas**, onde dá para mesclá-los com a conta certa.
-- **Só atualizar valores**: a opção “Só atualizar os valores” preenche os valores dos lançamentos já importados (pelo mês, linha e descrição) sem mexer em contas, regras ou correções feitas no app.
+- **Banco**: cada banco tem uma coluna da planilha (inicialmente E SICOOB LM, F SICOOB RM, G ITAÚ, H BRADESCO, I SICOOB RF, J LM SIST CX ECON, K RM). O lançamento fica com o banco cuja coluna tem valor diferente de zero; sem valor em nenhuma, fica sem banco. Se a coluna D estiver vazia, o valor vem da coluna do banco. Bancos novos, coluna, agência e número da conta são editados em **Bancos**.
+- **Fórmulas**: quando o arquivo não guardou o resultado das fórmulas (ex.: `=SOMA(E5:K5)` na coluna D), o app calcula a partir das células (referências, intervalos, SOMA/SUM e + − × ÷).
+- **Só atualizar valores**: a opção “Só atualizar valor e banco” preenche valor e banco dos lançamentos já importados (pelo mês, linha e descrição) sem mexer em plano de contas, regras ou correções feitas no app.
 - **Correções manuais**: quando a conta da coluna C é diferente do que as regras dariam (alguém digitou por cima), o lançamento entra como **Manual**.
 - **Reimportar**: importar de novo o mesmo ano substitui os lançamentos desse ano e as regras. O que foi apagado continua no histórico.
 
-Outros comandos: `python manage.py reclassificar`, `python manage.py carregar_plano_contas` e `python manage.py test financas` (26 testes).
+Outros comandos: `python manage.py reclassificar`, `python manage.py carregar_plano_contas` e `python manage.py test financas` (31 testes).
 
 ## Publicar no PythonAnywhere
 

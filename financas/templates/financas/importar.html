@@ -2,7 +2,7 @@
 {% block titulo %}Importar planilha{% endblock %}
 {% block conteudo %}
 <div class="cabecalho"><div><h1>Importar planilha</h1>
-  <span class="muted">Lê a aba <b>Regras</b> e as abas de mês <b>Jan…Dez</b>: descrição (coluna B), plano de contas (C) e valor (D).</span></div></div>
+  <span class="muted">Lê a aba <b>Regras</b> e as abas de mês <b>Jan…Dez</b>: descrição (coluna B), plano de contas (C), valor (D) e o banco pelas colunas definidas em <a href="{% url 'bancos' %}">Bancos</a> (E a K).</span></div></div>
 <div class="duas-colunas">
   <form method="post" enctype="multipart/form-data" class="formulario cartao">{% csrf_token %}
     {% if form.non_field_errors %}<div class="erros">{{ form.non_field_errors|join:" " }}</div>{% endif %}
@@ -15,14 +15,15 @@
     <h2 style="margin-top:0">Resultado</h2>
     {% if resultado.modo == "valores" %}
     <ul>
-      <li>Valores preenchidos ou alterados: <b>{{ resultado.valores_atualizados }}</b></li>
+      <li>Lançamentos com valor ou banco preenchido/alterado: <b>{{ resultado.valores_atualizados }}</b></li>
+      <li>Com valor: {{ resultado.com_valor|default:0 }} · com banco: {{ resultado.com_banco|default:0 }}</li>
       <li>Já estavam iguais: {{ resultado.valores_iguais }}</li>
       {% if resultado.nao_encontrados %}<li class="ruim">Linhas da planilha sem lançamento correspondente no app: {{ resultado.nao_encontrados }} — se a planilha ganhou linhas novas, use a importação completa.</li>{% endif %}
       {% if resultado.contas_unificadas %}<li>Contas duplicadas unificadas: {{ resultado.contas_unificadas }}</li>{% endif %}
     </ul>
     {% else %}
     <ul>
-      <li>Lançamentos importados: <b>{{ resultado.lancamentos }}</b>, {{ resultado.com_valor }} com valor
+      <li>Lançamentos importados: <b>{{ resultado.lancamentos }}</b> — {{ resultado.com_valor }} com valor, {{ resultado.com_banco }} com banco
         <ul>
           <li>classificados pelas regras: {{ resultado.automaticos }}</li>
           <li>com plano de contas escolhido à mão na planilha: {{ resultado.manuais }}</li>
@@ -33,6 +34,8 @@
       {% if resultado.contas_unificadas %}<li>Contas duplicadas unificadas: {{ resultado.contas_unificadas }}</li>{% endif %}
       {% if resultado.reclassificados %}<li>Lançamentos de outros anos reclassificados: {{ resultado.reclassificados }}</li>{% endif %}
     </ul>
+    {% if resultado.valor_pela_coluna_do_banco %}<p class="small muted">{{ resultado.valor_pela_coluna_do_banco }} lançamento(s) estavam com a coluna D vazia; o valor veio da coluna do banco.</p>{% endif %}
+    {% if resultado.varios_bancos %}<p class="ruim">▲ {{ resultado.varios_bancos|length }} linha(s) com valor em mais de um banco (ficou o primeiro): {{ resultado.varios_bancos|slice:":10"|join:", " }}{% if resultado.varios_bancos|length > 10 %}…{% endif %}</p>{% endif %}
     {% if resultado.lancamentos and not resultado.com_valor %}<p class="ruim">▲ Nenhum valor foi lido. Confira a letra da coluna do valor.</p>{% endif %}
     {% if resultado.contas_sem_codigo %}
     <p class="ruim">▲ {{ resultado.contas_sem_codigo|length }} nome(s) da coluna “Plano de Contas” não existem no plano de contas e ficam fora do dashboard:
